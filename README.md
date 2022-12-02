@@ -79,6 +79,7 @@ response file
       - pdf `string`
       - code `string`                       // 裁判法院代碼
       - name `string`                       // 裁判法院名稱
+      - 
       - serial `string`                     // 裁判書 ID 第六個參數
     - judicialDataset                       // *裁判書資料集表*
       - id `int`                            // 資料集Id
