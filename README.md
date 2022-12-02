@@ -79,13 +79,12 @@ response file
       - pdf `string`
       - code `string`                       // 裁判法院代碼
       - name `string`                       // 裁判法院名稱
-      - 
       - serial `string`                     // 裁判書 ID 第六個參數
     - judicialDataset                       // *裁判書資料集表*
       - id `int`                            // 資料集Id
       - title `string`                      // 資料集名稱
       - categoryName `string`               // 主題分類名稱
-      - filesets `json`                     // 字別(此欄位會多筆)
+      - filesets `json`                     // 資料源(此欄位會多筆)
         - fileSetId `int`                   // 資料源Id
         - resourceFormat `string`           // 檔案格式
         - resourceDescription `string`      // 料源描述
