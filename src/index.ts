@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { Knex } from 'knex';
+import * as knex from './db/knex';
 
 const GET_RESOURCES_URL =
     'https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources';
@@ -16,7 +18,33 @@ interface FILESET {
     resourceDescription: string;
 }
 
+const config: Knex.Config = {
+    client: 'mysql2',
+    connection: {
+        host: '127.0.0.1',
+        port: 3306,
+        user: 'root',
+        password: '',
+        database: 'rental',
+    },
+    log: {
+        warn(message) {
+            console.log(message);
+        },
+        error(message) {
+            console.log(message);
+        },
+        deprecate(message) {
+            console.log(message);
+        },
+        debug(message) {
+            console.log(message);
+        },
+    },
+};
+
 (async () => {
+    const knexClient = knex.init(config);
     // response [
     //     {
     //         "datasetId": 21736,  // 資料源ID
@@ -34,7 +62,9 @@ interface FILESET {
     const { data: resources }: { data: RESOURCE[] } = await axios.get(
         GET_RESOURCES_URL
     );
-
+    resources.forEach(
+        async ({ datasetId, title, categoryName, filesets }) => {}
+    );
     // const stockIds: {value: string}[] = stockIdsParsed.body[0].declarations[0].init.elements;
 
     // // stockIds the first useful value is third element.
