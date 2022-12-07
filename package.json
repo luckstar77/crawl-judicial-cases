@@ -12,7 +12,7 @@
   },
   "keywords": [
     "TAIWAN",
-    "RENTAL",
+    "RENTAL"
   ],
   "author": "Allen Lai",
   "license": "MIT",
@@ -21,14 +21,14 @@
   },
   "homepage": "https://github.com/luckstar77/crawl-judicial-cases#readme",
   "dependencies": {
-    "axios": "^0.27.2",
-    "cheerio": "^1.0.0-rc.12",
-    "redis": "^4.3.1"
+    "axios": "^0.27.2"
   },
   "devDependencies": {
     "@types/node": "^18.7.23",
     "@typescript-eslint/eslint-plugin": "^5.39.0",
-    "@typescript-eslint/parser": "^5.39.0",
-    "eslint": "^8.24.0"
+    "@typescript-eslint/parser": "^5.45.1",
+    "eslint": "^8.29.0",
+    "prettier": "^2.8.0",
+    "typescript": "^4.9.3"
   }
 }
