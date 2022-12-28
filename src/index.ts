@@ -44,7 +44,7 @@ const config: Knex.Config = {
 };
 
 (async () => {
-    const knexClient = knex.init(config);
+    const knexClient = await knex.init(config);
     // response [
     //     {
     //         "datasetId": 21736,  // 資料源ID
@@ -62,9 +62,18 @@ const config: Knex.Config = {
     const { data: resources }: { data: RESOURCE[] } = await axios.get(
         GET_RESOURCES_URL
     );
-    resources.forEach(
-        async ({ datasetId, title, categoryName, filesets }) => {}
-    );
+    resources.forEach(async ({ datasetId, title, categoryName, filesets }) => {
+        const result = await knexClient('judicialDataset')
+            .insert({
+                id: datasetId,
+                title,
+                categoryName,
+                filesets: JSON.stringify(filesets),
+            })
+            .onConflict('datasetId')
+            .merge();
+        console.log(result);
+    });
     // const stockIds: {value: string}[] = stockIdsParsed.body[0].declarations[0].init.elements;
 
     // // stockIds the first useful value is third element.
