@@ -5,6 +5,7 @@ import * as knex from './db/knex';
 const GET_RESOURCES_URL =
     'https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources';
 
+
 interface RESOURCE {
     datasetId: string; // 資料源ID
     title: string; // 資料源年月份
@@ -45,6 +46,7 @@ const config: Knex.Config = {
 
 (async () => {
     const knexClient = await knex.init(config);
+
     // response [
     //     {
     //         "datasetId": 21736,  // 資料源ID
@@ -62,7 +64,21 @@ const config: Knex.Config = {
     const { data: resources }: { data: RESOURCE[] } = await axios.get(
         GET_RESOURCES_URL
     );
+
     resources.forEach(async ({ datasetId, title, categoryName, filesets }) => {
+        // upsert
+        // {
+        //     "datasetId": 21736,  // 資料源ID
+        //     "title": "199601",   // 資料源年月份
+        //     "categoryName": "裁判書",
+        //     "filesets": [
+        //         {
+        //             "fileSetId": 30441,  // 檔案ID
+        //             "resourceFormat": "RAR",  // 檔案類型
+        //             "resourceDescription": "199601"
+        //         }
+        //     ]
+        // }
         const result = await knexClient('judicialDataset')
             .insert({
                 id: datasetId,
@@ -72,7 +88,6 @@ const config: Knex.Config = {
             })
             .onConflict('datasetId')
             .merge();
-        console.log(result);
     });
     // const stockIds: {value: string}[] = stockIdsParsed.body[0].declarations[0].init.elements;
 
