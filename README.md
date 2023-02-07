@@ -108,3 +108,5 @@ response file
 ## 參考資料
 - [裁判書開放資料說明](https://opendata.judicial.gov.tw/QA)
 - [開發指引](https://opendata.judicial.gov.tw/DevelopmentGuide)
+
+## 裁判書更新時間 2022/02/03

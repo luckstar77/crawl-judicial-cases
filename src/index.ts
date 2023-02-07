@@ -5,7 +5,6 @@ import * as knex from './db/knex';
 const GET_RESOURCES_URL =
     'https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources';
 
-
 interface RESOURCE {
     datasetId: string; // 資料源ID
     title: string; // 資料源年月份
@@ -179,5 +178,5 @@ const config: Knex.Config = {
 
     // await redisClient.incr('STOCK_ID_INDEX');
 
-    // process.exit();
+    process.exit();
 })();
