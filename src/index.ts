@@ -32,7 +32,7 @@ const config: Knex.Config = {
 
     // await upsertJudicialDataset();
 
-    // await getFileList(JUDICIAL_DATASET_FILEPATH);
+    // await upsertFileset(JUDICIAL_DATASET_FILEPATH);
 
     await updateJudicialFileset();
 

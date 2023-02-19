@@ -24,7 +24,8 @@
     "axios": "^0.27.2",
     "knex": "^2.3.0",
     "mysql2": "^2.3.3",
-    "node-unrar-js": "^2.0.0"
+    "node-unrar-js": "^2.0.0",
+    "parse-chinese-number": "^1.0.5"
   },
   "devDependencies": {
     "@types/node": "^18.7.23",
