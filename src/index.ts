@@ -1,5 +1,6 @@
 import { Knex } from 'knex';
 import * as knex from './db/knex';
+import updateJudicialFileset from './utils/updateJudicialFileset';
 
 const config: Knex.Config = {
     client: 'mysql2',
@@ -32,6 +33,8 @@ const config: Knex.Config = {
     // await upsertJudicialDataset();
 
     // await getFileList(JUDICIAL_DATASET_FILEPATH);
+
+    await updateJudicialFileset();
 
     process.exit();
 })();
