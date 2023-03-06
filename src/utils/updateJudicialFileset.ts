@@ -5,8 +5,8 @@ import getMatchFromRegExp from './getMatchFromRegExp';
 import { parseChineseNumber } from 'parse-chinese-number';
 
 const TABLE_WIN: Map = {
-    原告: 'plaintiff',
-    被告: 'defendant',
+    被告: 'plaintiff',
+    原告: 'defendant',
 };
 
 interface Map {
@@ -21,7 +21,9 @@ export default async () => {
         'judicialFileset'
     ).select();
 
-    judicialFilesets.forEach(async ({ id, jfull, ...fileset }) => {
+    for (const judicialFileset of judicialFilesets) {
+        const { id, jfull, ...fileset } = judicialFileset;
+
         let updateData = {};
         let city = getMatchFromRegExp(/(?:臺灣|福建)(.{2})地方法院/m, jfull);
         if (city === '士林') city = '台北';
@@ -52,8 +54,10 @@ export default async () => {
                 ? TABLE_WIN[filterWinString]
                 : undefined;
 
-            updateData = { id, plaintiff, defendant, rent, win };
-            console.log(updateData);
+            updateData = { id, plaintiff, defendant, rent, win, city };
+            const result = await knexClient('judicialFileset')
+                .update(updateData)
+                .where({ id });
         }
-    });
+    }
 };
