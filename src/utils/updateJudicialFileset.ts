@@ -1,4 +1,3 @@
-import { devNull } from 'os';
 import * as knex from '../db/knex';
 import getMatchFromRegExp from './getMatchFromRegExp';
 
