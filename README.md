@@ -109,4 +109,8 @@ response file
 - [裁判書開放資料說明](https://opendata.judicial.gov.tw/QA)
 - [開發指引](https://opendata.judicial.gov.tw/DevelopmentGuide)
 
+## TODO
+- 加入張淑晶案例
+- 加入自動更新案例
+
 ## 裁判書更新時間 2022/02/03
