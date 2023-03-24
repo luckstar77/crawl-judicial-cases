@@ -1,6 +1,10 @@
 import { Knex } from 'knex';
 import * as knex from './db/knex';
 import updateJudicialFileset from './utils/updateJudicialFileset';
+import upsertJudicialDataset from './utils/upsertJudicialDataset';
+import upsertOriginFileset from './utils/upsertOriginFileset';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const config: Knex.Config = {
     client: 'mysql2',
@@ -30,11 +34,13 @@ const config: Knex.Config = {
 (async () => {
     await knex.init(config);
 
-    // await upsertJudicialDataset();
+    const datasets = await upsertJudicialDataset();
+
+    await upsertOriginFileset(datasets);
 
     // await upsertFileset(JUDICIAL_DATASET_FILEPATH);
 
-    await updateJudicialFileset();
+    // await updateJudicialFileset();
 
     process.exit();
 })();

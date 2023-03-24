@@ -39,7 +39,7 @@ export default async () => {
         GET_RESOURCES_URL
     );
 
-    resources.forEach(async ({ datasetId, title, categoryName, filesets }) => {
+    for (const { datasetId, title, categoryName, filesets } of resources) {
         // upsert
         // {
         //     "datasetId": 21736,  // 資料源ID
@@ -62,5 +62,7 @@ export default async () => {
             })
             .onConflict('id')
             .merge();
-    });
+    }
+
+    return resources;
 };
