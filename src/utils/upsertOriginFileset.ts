@@ -7,6 +7,8 @@ import * as unrar from 'node-unrar-js';
 import * as knex from '../db/knex';
 import getMemberTokens from './getMemberTokens';
 
+const UPSERT: boolean = process.env.UPSERT === 'true';
+
 interface RESOURCE {
     datasetId: string; // 資料源ID
     title: string; // 資料源年月份
@@ -103,7 +105,7 @@ const parseJsonFile = async (filePath: string): Promise<void> => {
             JFULL,
             JPDF,
         };
-        if (process.env.UPSERT) {
+        if (UPSERT) {
             const result = await knexClient('judicialOriginFileset')
                 .insert(upsertData)
                 .onConflict('JID')
@@ -133,7 +135,7 @@ const upsertOriginFileset = async (datasets: RESOURCE[]): Promise<void> => {
     await createDirectory(extractDir);
     for (const dataset of datasets) {
         const datasetYearMonth = dataset.title.substring(0, 6);
-        if (datasetYearMonth <= '200001') continue;
+        if (datasetYearMonth < '200207') continue;
         const url = `https://opendata.judicial.gov.tw/api/FilesetLists/${dataset.filesets[0].fileSetId}/file`;
         const downloadPath = path.resolve(__dirname, 'example.rar');
 

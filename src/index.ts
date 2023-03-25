@@ -1,10 +1,11 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { Knex } from 'knex';
 import * as knex from './db/knex';
 import updateJudicialFileset from './utils/updateJudicialFileset';
 import upsertJudicialDataset from './utils/upsertJudicialDataset';
 import upsertOriginFileset from './utils/upsertOriginFileset';
-import dotenv from 'dotenv';
-dotenv.config();
 
 const config: Knex.Config = {
     client: 'mysql2',
