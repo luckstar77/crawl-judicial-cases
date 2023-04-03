@@ -1,31 +1,38 @@
-import mysql, { RowDataPacket } from 'mysql2/promise';
+import * as knex from '../db/knex';
 
 const getDeciles = async () => {
-    // 連接 MySQL 資料庫
-    const connection = await mysql.createConnection({
-        host: 'localhost',
-        user: 'root',
-        password: '',
-        database: 'rental',
-    });
+    const knexClient = await knex.getClient();
 
     // 執行查詢指令
-    const [rows] = await connection.execute(`
-    SELECT city, jyear, rent FROM judicialFileset
-    WHERE city IS NOT NULL AND rent IS NOT NULL
-    ORDER BY city asc, jyear asc, rent asc
-  `);
+    const rows = await knexClient('judicialFileset')
+        .select('city', 'jyear', 'rent')
+        .whereNotNull('rent')
+        .orderBy('city')
+        .orderBy('jyear')
+        .orderBy('rent');
 
     // 依照城市與年份分組，計算十分位數資料
     const decilesByCityYear: { [cityYear: string]: number[] } = {};
     let currentCityYear = '';
     let currentValues: number[] = [];
-    for (const row of rows as RowDataPacket[]) {
-        const cityYear = `${row.city}_${row.jyear}`;
+    for (const row of rows) {
+        const { city, jyear: year } = row;
+        const cityYear = `${city}_${year}`;
         if (cityYear !== currentCityYear) {
             if (currentCityYear) {
                 decilesByCityYear[currentCityYear] =
                     calculateDeciles(currentValues);
+                const result = await knexClient('decilesByCityYear')
+                    .insert({
+                        city,
+                        year,
+                        deciles: JSON.stringify(
+                            decilesByCityYear[currentCityYear]
+                        ),
+                        count: currentValues.length,
+                    })
+                    .onConflict(['city', 'year'])
+                    .merge();
             }
             currentCityYear = cityYear;
             currentValues = [];
@@ -36,17 +43,14 @@ const getDeciles = async () => {
         decilesByCityYear[currentCityYear] = calculateDeciles(currentValues);
     }
 
-    // 關閉資料庫連線
-    connection.end();
-
     return decilesByCityYear;
 };
 
 function calculateDeciles(values: number[]) {
     const n = values.length;
     const deciles: number[] = [];
-    for (let i = 0; i < 10; i++) {
-        const index = Math.floor((n * (i + 1)) / 10) - 1;
+    for (let i = 1; i < 10; i++) {
+        const index = Math.floor((n * i) / 10);
         deciles.push(values[index]);
     }
     return deciles;
