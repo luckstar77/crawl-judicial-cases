@@ -7,6 +7,8 @@ import * as unrar from 'node-unrar-js';
 import * as knex from '../db/knex';
 import getMemberTokens from './getMemberTokens';
 
+import { getClient as mongodbGetClient } from '../db/mongodb';
+
 const UPSERT: boolean = process.env.UPSERT === 'true';
 
 interface RESOURCE {
@@ -68,6 +70,9 @@ async function extractFiles(filePath: string, destFolder: string) {
 
     for (const file of files) {
         const filename = file.fileHeader.name;
+        if (shouldSkipFile(filename)) {
+            continue;
+        }
 
         // 如果是目錄，則建立目錄
         if (file.fileHeader.flags.directory) {
@@ -88,8 +93,65 @@ async function extractFiles(filePath: string, destFolder: string) {
     }
 }
 
+function shouldSkipFile(filename: string): boolean {
+    const keywords = [
+        '司法院',
+        '懲戒法院',
+        '最高法院',
+        '高等法院',
+        '最高行政法院',
+    ];
+
+    return keywords.some((keyword) => filename.includes(keyword));
+}
+
 const parseJsonFile = async (filePath: string): Promise<void> => {
     const jsonData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+    // 上傳案件到 mysql 裡
+    // await upsertFilesetIntoMysql(jsonData);
+
+    await upsertFilesetIntoMongoDB(jsonData);
+};
+
+async function upsertFilesetIntoMongoDB(jsonData: any) {
+    try {
+        const client = await mongodbGetClient();
+        const db = client.db('rental'); // 更改為您的資料庫名稱
+        const collection = db.collection('judicialFileset');
+
+        const { JID, JYEAR, JCASE, JNO, JDATE, JTITLE, JFULL, JPDF } = jsonData;
+        const convertJDATE = convertDateStr(JDATE);
+        const upsertData = {
+            JID,
+            JYEAR,
+            JCASE,
+            JNO,
+            JDATE: convertJDATE,
+            JTITLE,
+            JFULL,
+            JPDF,
+        };
+
+        if (UPSERT) {
+            const result = await collection.updateOne(
+                { JID },
+                { $set: upsertData },
+                { upsert: true }
+            );
+        } else {
+            const result = await collection.updateOne(
+                { JID },
+                { $setOnInsert: upsertData },
+                { upsert: true }
+            );
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function upsertFilesetIntoMysql(jsonData: any) {
     const knexClient = await knex.getClient();
 
     try {
@@ -118,7 +180,8 @@ const parseJsonFile = async (filePath: string): Promise<void> => {
         }
     } finally {
     }
-};
+}
+
 function convertDateStr(str: string): string {
     if (/^\d{8}$/.test(str)) {
         const year = str.substring(0, 4);
@@ -135,7 +198,6 @@ const upsertOriginFileset = async (datasets: RESOURCE[]): Promise<void> => {
     await createDirectory(extractDir);
     for (const dataset of datasets) {
         const datasetYearMonth = dataset.title.substring(0, 6);
-        if (datasetYearMonth < '200808') continue;
         const url = `https://opendata.judicial.gov.tw/api/FilesetLists/${dataset.filesets[0].fileSetId}/file`;
         const downloadPath = path.resolve(__dirname, 'example.rar');
 

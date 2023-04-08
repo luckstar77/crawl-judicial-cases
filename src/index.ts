@@ -37,16 +37,16 @@ const config: Knex.Config = {
     await knex.init(config);
 
     // 取得所有判決書資料來源
-    // const datasets = await upsertJudicialDataset();
+    const datasets = await upsertJudicialDataset();
 
     // 抓所有案件資源到資料庫
-    // await upsertOriginFileset(datasets);
+    await upsertOriginFileset(datasets);
 
     // await upsertFileset(JUDICIAL_DATASET_FILEPATH);
 
     // await updateJudicialFileset();
 
     // 更新十分位數
-    await updatePercentile();
+    // await updatePercentile();
     process.exit();
 })();
