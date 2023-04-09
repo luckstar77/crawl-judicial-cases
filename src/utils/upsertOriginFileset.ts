@@ -95,11 +95,21 @@ async function extractFiles(filePath: string, destFolder: string) {
 
 function shouldSkipFile(filename: string): boolean {
     const keywords = [
+        // JFULL
         '司法院',
         '懲戒法院',
         '最高法院',
         '高等法院',
-        '最高行政法院',
+        '行政法院',
+        '商業法院',
+        // JCASE
+        '再',
+        '上',
+        '救',
+        '聲',
+        '緝',
+        '續',
+        '更',
     ];
 
     return keywords.some((keyword) => filename.includes(keyword));
@@ -108,11 +118,55 @@ function shouldSkipFile(filename: string): boolean {
 const parseJsonFile = async (filePath: string): Promise<void> => {
     const jsonData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
+    if (shouldSkipFileByFullAndTitle(jsonData)) return;
+
     // 上傳案件到 mysql 裡
     // await upsertFilesetIntoMysql(jsonData);
 
     await upsertFilesetIntoMongoDB(jsonData);
 };
+
+function shouldSkipFileByFullAndTitle(jsonData: any) {
+    // 检查 jsonData.JTITLE 不包含指定的字符串
+    const excludedTitles = [
+        '債務人異議之訴',
+        '確認本票債權不存在',
+        '第三人異議之訴',
+        '返還借款',
+        '拆屋還地',
+        '侵占',
+        '業務過失致死',
+        '給付償金',
+        '確認特留分等',
+        '返還土地',
+        '違反貪污治罪條例',
+        '詐欺',
+        '清算事件',
+        '清償債務',
+        '租佃爭議',
+        '清償借款',
+    ];
+
+    const isValidTitle = excludedTitles.every(
+        (excludedTitle) => !jsonData.JTITLE.includes(excludedTitle)
+    );
+    if (!isValidTitle) {
+        return true;
+    }
+
+    // 检查 jsonData.JFULL 包含指定的字符串
+    const requiredSubstrings = ['租金', '房屋'];
+    const isValidFull = requiredSubstrings.every((substring) =>
+        jsonData.JFULL.includes(substring)
+    );
+
+    // 如果以上条件没有达成，则返回
+    if (!isValidFull) {
+        return true;
+    }
+
+    return false;
+}
 
 async function upsertFilesetIntoMongoDB(jsonData: any) {
     try {
