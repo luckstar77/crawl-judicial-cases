@@ -110,6 +110,9 @@ function shouldSkipFile(filename: string): boolean {
         '緝',
         '續',
         '更',
+        '清',
+        '抗',
+        '補',
     ];
 
     return keywords.some((keyword) => filename.includes(keyword));
@@ -145,6 +148,17 @@ function shouldSkipFileByFullAndTitle(jsonData: any) {
         '清償債務',
         '租佃爭議',
         '清償借款',
+        '給付管理費',
+        '排除侵害',
+        '分割共有物',
+        '所有權移轉登記',
+        '分割遺產',
+        '履行契約',
+        '賭博',
+        '返還租賃物',
+        '妨害風化',
+        '調整租金',
+        '',
     ];
 
     const isValidTitle = excludedTitles.every(
