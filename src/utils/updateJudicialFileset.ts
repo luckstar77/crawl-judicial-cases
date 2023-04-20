@@ -1,7 +1,4 @@
 import * as knex from '../db/knex';
-import getMatchFromRegExp from './getMatchFromRegExp';
-
-import { parseChineseNumber } from 'parse-chinese-number';
 import getUpdateData from './getUpdateData';
 
 export default async () => {

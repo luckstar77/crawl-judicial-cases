@@ -1,8 +1,11 @@
 import { getClient as mongodbGetClient } from '../db/mongodb';
+import * as knex from '../db/knex';
 
 import getUpdateData from './getUpdateData';
 
 export default async () => {
+    const knexClient = await knex.getClient();
+
     const client = await mongodbGetClient();
     const db = client.db('rental'); // 更改為您的資料庫名稱
     const collection = db.collection('judicialFileset');
@@ -15,15 +18,25 @@ export default async () => {
         const { jid: id, jfull, jtitle, ...fileset } = lowerKeyFileset;
 
         const updateData: any = getUpdateData({ id, jfull, jtitle });
+        // if (updateData) {
+        //     delete updateData.id;
+        //     const result = await db
+        //         .collection('judicialFilesetValid')
+        //         .updateOne(
+        //             { jid: id },
+        //             { $set: { ...judicialFileset, ...updateData } },
+        //             { upsert: true }
+        //         );
+        // }
+
         if (updateData) {
-            delete updateData.id;
-            const result = await db
-                .collection('judicialFilesetValid')
-                .updateOne(
-                    { jid: id },
-                    { $set: { ...judicialFileset, ...updateData } },
-                    { upsert: true }
-                );
+            const mysqlUpdata = { ...judicialFileset, ...updateData };
+            delete mysqlUpdata._id;
+            delete mysqlUpdata.JID;
+            const result = await knexClient('judicialFileset')
+                .insert(mysqlUpdata)
+                .onConflict('id')
+                .merge();
         }
     }
 };
