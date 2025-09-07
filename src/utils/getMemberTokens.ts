@@ -1,3 +1,4 @@
+// 以會員帳密交換 API Token（下載檔案時需要）。
 import axios from 'axios';
 
 const apiUrl = 'https://opendata.judicial.gov.tw/api/MemberTokens';
@@ -12,6 +13,7 @@ interface MemberTokenResponseBody {
     expires: string;
 }
 
+/** 發送 POST 至 MemberTokens 以取得 Bearer Token。 */
 async function getMemberToken(
     requestBody: MemberTokenRequestBody
 ): Promise<string> {
@@ -33,7 +35,9 @@ async function getMemberToken(
     }
 }
 
-// 使用範例
+/**
+ * 便捷封裝：使用環境變數 `JUDICIAL_ACCOUNT` 與 `JUDICIAL_PWD` 取得 Token。
+ */
 async function getMemberTokens() {
     const requestBody: MemberTokenRequestBody = {
         memberAccount: process.env.JUDICIAL_ACCOUNT!,

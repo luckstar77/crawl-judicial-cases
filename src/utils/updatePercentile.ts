@@ -1,9 +1,10 @@
+// 依 {城市, 年度} 計算租金十分位數，存入 `decilesByCityYear`。
 import * as knex from '../db/knex';
 
 const getDeciles = async () => {
     const knexClient = await knex.getClient();
 
-    // 執行查詢指令
+    // 查詢已標準化之租金欄位；過濾空值並排序，便於以索引計算百分位
     const rows = await knexClient('judicialFileset')
         .select('city', 'jyear', 'rent')
         .whereNotNull('rent')
@@ -11,7 +12,7 @@ const getDeciles = async () => {
         .orderBy('jyear')
         .orderBy('rent');
 
-    // 依照城市與年份分組，計算十分位數資料
+    // 走訪排序後資料，依城市+年度分組並計算每組的十分位數
     const decilesByCityYear: { [cityYear: string]: number[] } = {};
     let currentCityYear = '';
     let currentValues: number[] = [];
@@ -22,6 +23,7 @@ const getDeciles = async () => {
             if (currentCityYear) {
                 decilesByCityYear[currentCityYear] =
                     calculateDeciles(currentValues);
+                // 將上一組的結果寫入資料表
                 const result = await knexClient('decilesByCityYear')
                     .insert({
                         city,
@@ -46,6 +48,9 @@ const getDeciles = async () => {
     return decilesByCityYear;
 };
 
+/**
+ * 以索引法計算十分位數（不做插值）：輸入值需事先排序。
+ */
 function calculateDeciles(values: number[]) {
     const n = values.length;
     const deciles: number[] = [];

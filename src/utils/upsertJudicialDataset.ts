@@ -1,8 +1,11 @@
+// 從司法院開放資料 API 取得每月資源清單
+// 並 upsert 至 MySQL `judicialDataset`，供後續流程使用。
 import axios from 'axios';
 import * as knex from '../db/knex';
 
 const GET_RESOURCES_URL =
     'https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources';
+// 可選：本地資料夾路徑（此檔未使用），供其他流程從磁碟讀取資料時使用
 const JUDICIAL_DATASET_FILEPATH = '/Users/allenlai/Downloads/judical-cases';
 
 interface RESOURCE {
@@ -18,6 +21,10 @@ interface FILESET {
     resourceDescription: string;
 }
 
+/**
+ * 取得每月資料集（RAR/CSV）清單並 upsert 至 `judicialDataset`。
+ * 回傳資源清單供後續下載使用。
+ */
 export default async () => {
     const knexClient = await knex.getClient();
 
@@ -35,6 +42,7 @@ export default async () => {
     //         ]
     //     },
     // ]
+    // 從開放資料平台取得資源清單
     const { data: resources }: { data: RESOURCE[] } = await axios.get(
         GET_RESOURCES_URL
     );
@@ -53,6 +61,7 @@ export default async () => {
         //         }
         //     ]
         // }
+        // 以 datasetId 為主鍵 upsert 每筆資源
         const result = await knexClient('judicialDataset')
             .insert({
                 id: datasetId,
