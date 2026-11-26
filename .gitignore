@@ -4,3 +4,4 @@ build
 .env
 coverage
 reclassify-report*.json
+reextract-report*.json

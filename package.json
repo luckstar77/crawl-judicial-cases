@@ -6,6 +6,7 @@
     "scripts": {
         "start": "ts-node src/index.ts",
         "reclassify": "ts-node src/scripts/reclassify-judgments.ts",
+        "reextract": "ts-node src/scripts/reextract-fields.ts",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
         "typecheck": "tsc --noEmit -p .",
