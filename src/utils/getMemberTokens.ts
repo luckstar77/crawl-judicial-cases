@@ -1,5 +1,6 @@
 // 以會員帳密交換 API Token（下載檔案時需要）。
 import axios from 'axios';
+import { describeError } from './describe-error';
 
 const apiUrl = 'https://opendata.judicial.gov.tw/api/MemberTokens';
 
@@ -30,7 +31,8 @@ async function getMemberToken(
 
         return response.data.token;
     } catch (error) {
-        console.error(error);
+        // 不可印出整個錯誤物件：config.data 含帳密
+        console.error(`取得資料開放平臺會員 Token 失敗：${describeError(error)}`);
         return '';
     }
 }

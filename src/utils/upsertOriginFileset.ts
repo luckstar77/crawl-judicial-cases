@@ -9,6 +9,7 @@ import * as unrar from 'node-unrar-js';
 
 import * as knex from '../db/knex';
 import { classifyRentalDispute } from '../classifier/rental-dispute-classifier';
+import { describeError } from './describe-error';
 import getMemberTokens from './getMemberTokens';
 
 import { getClient as mongodbGetClient } from '../db/mongodb';
@@ -104,7 +105,7 @@ async function extractFiles(filePath: string, destFolder: string) {
         try {
             await parseJsonFile(jsonPath);
         } catch (err) {
-            console.error(err);
+            console.error(`解析或入庫 ${JSON.stringify(filename)} 失敗：${describeError(err)}`);
         }
     }
 }
@@ -188,7 +189,7 @@ async function upsertFilesetIntoMongoDB(jsonData: any) {
             );
         }
     } catch (error) {
-        console.error(error);
+        console.error(`寫入 MongoDB judicialFileset 失敗：${describeError(error)}`);
     }
 }
 
@@ -254,7 +255,8 @@ const upsertOriginFileset = async (datasets: RESOURCE[]): Promise<void> => {
             // 解壓縮檔案
             await extractFiles(downloadPath, extractDir);
         } catch (err) {
-            console.error(err);
+            // 不可印出整個錯誤物件：下載失敗的 axios 錯誤含 Authorization: Bearer Token
+            console.error(`下載或解壓 ${datasetYearMonth} 失敗：${describeError(err)}`);
         } finally {
             // 刪除下載的檔案和解壓縮後的資料夾
             await fs.promises.unlink(downloadPath);
