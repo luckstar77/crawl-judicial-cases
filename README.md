@@ -1,22 +1,15 @@
 ## 流程
-- 指定主題分類代碼取得資料源清單 – 取得所有判決書
-  - 判斷ID是否有紀錄
-  - 判斷TITLE是否有更新
-  - 若沒有ID紀錄或者TITLE有更新則記錄以下資料
-    - datasetId – 資料源ID，當作資料ID。
-    - title – 資料源年、月份，格式為yyyymm或者yyyymm–(yyyymmddUpdate)，判斷取得的資料是否有更新備註，有的話則更新資料庫。
-    - filesets.fileSetId – 檔案ID，利用這個去取得檔案。
-    - filesets.resourceFormat – 檔案類型，格式為RAR或CSV，利用這個去處理RAR檔或者CSV檔。
-- 取得會員授權Token – 取得會員授權Token，帶入帳號密碼。
-- 以URL存取資料 – 取得資料源檔案，依據檔案類型RAR或者CSV做資料處理。
-  - 解析RAR檔案，會有資料夾階層，最底層每一筆資料為JSON檔，檔名為判決書ID，並記錄上一層的資料夾名稱(法院中文名稱)
-  - 每筆判決以 `classifyRentalDispute` 判斷是否為房屋租賃糾紛，只保留符合的判決（規則見下方「房屋租賃糾紛判斷規則」）
-  - 解析CSV檔案，title為Delete-Infor的是需要刪除的判決書資料，依照第四項裁判ID去做資料庫的刪除動作
-  ```
-  刪除日期,裁判日期年月,法院名稱,裁判ID
-  20200615,200204,臺灣高等法院臺中分院民事,"TCHV,91,家抗,49,20020423,1"
-  ```
-  
+
+資料來源是司法院的兩個服務，各由一支同步工作處理（詳見下方「資料同步工作」）：
+
+- **每日同步** `npm run sync:daily`：以裁判書開放 API 取得 7 日前異動的裁判書，民事第一審且為房屋租賃糾紛的判決擷取欄位後 upsert；已被撤下的判決連同留言、按讚一起刪除。
+- **Delete-Infor 刪除清單** `npm run sync:delete-infor`：依資料開放平臺每月更新的刪除清單，刪除已被撤下、但仍在資料庫中的判決。這是使用規範的義務。
+- **每月批次匯入** `npm run sync:monthly`：下載資料開放平臺每月的 RAR 補資料，略過刪除清單上的判決。
+
+每筆判決先以 `classifyRentalDispute` 判斷是否為房屋租賃糾紛（規則見「房屋租賃糾紛判斷規則」），再以 `extractJudgmentFields` 擷取原告、被告、租金、勝敗與城市（規則見「欄位擷取規則」）。
+
+舊的 MongoDB 匯入流程（`npm start`、`src/index.ts` 與 `src/utils` 的下載、同步程式）已移除：它把 MongoDB 的資料寫回 MySQL 時不檢查刪除清單，會讓已依規撤下的判決重新出現。需要時可從 git 歷史取回。
+
 ## 房屋租賃糾紛判斷規則
 
 規則在 `src/classifier/rental-dispute-rules.ts`，判斷流程在 `src/classifier/rental-dispute-classifier.ts`。依序檢查，任一項不符就排除：
@@ -165,7 +158,6 @@ UTC 主機、不支援 `CRON_TZ` 時：
 | 變數 | 預設 | 說明 |
 |---|---|---|
 | `JUDICIAL_ACCOUNT`、`JUDICIAL_PWD` | — | 司法院資料開放平臺帳密（同步工作必填；裁判書開放 API 也使用同一組） |
-| `UPSERT` | `false` | `true` 時重複的判決會被覆寫 |
 | `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE` | `127.0.0.1`、`3306`、`root`、空字串、`rental` | MySQL 連線 |
 
 ## 測試

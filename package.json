@@ -4,7 +4,6 @@
     "description": "抓取判決書的資料，上傳到資料庫。",
     "main": "index.js",
     "scripts": {
-        "start": "ts-node src/index.ts",
         "reclassify": "ts-node src/scripts/reclassify-judgments.ts",
         "reextract": "ts-node src/scripts/reextract-fields.ts",
         "sync:daily": "ts-node src/scripts/sync-daily.ts",
@@ -33,7 +32,6 @@
         "axios": "^0.27.2",
         "dotenv": "^16.0.3",
         "knex": "^2.3.0",
-        "mongodb": "^5.2.0",
         "mysql2": "^2.3.3",
         "node-unrar-js": "^2.0.0",
         "parse-chinese-number": "^1.0.5"
