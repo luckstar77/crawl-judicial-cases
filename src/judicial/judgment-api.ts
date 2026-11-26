@@ -9,6 +9,11 @@ export const JUDGMENT_API_BASE_URL = 'https://data.judicial.gov.tw/jdg/api';
 const AUTH_FAILED_MESSAGE = '驗證失敗';
 /** 「查無資料，本裁判可能未公開或已從系統移除…」：本院已移除，使用者必須刪除 */
 const REMOVED_MESSAGE = '查無資料';
+/**
+ * JDoc 對部分 JList 列出的裁判（多為調解、保護令與不公開的案件）固定回這個 .NET 例外訊息，
+ * 重試也拿不到全文。視為「無法取得」，不算失敗，也不代表司法院已移除。
+ */
+const UNAVAILABLE_MESSAGE = '並未將物件參考設定為物件的執行個體';
 
 const DEFAULT_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 1000;
@@ -37,7 +42,7 @@ export interface JDocResponse {
     };
 }
 
-export type JDocResult = { kind: 'found'; document: RawJudgment } | { kind: 'removed' };
+export type JDocResult = { kind: 'found'; document: RawJudgment } | { kind: 'removed' } | { kind: 'unavailable' };
 
 export interface JudgmentApi {
     /** 7 日前異動的裁判書 ID */
@@ -162,6 +167,9 @@ export const createJudgmentApi = (options: JudgmentApiOptions): JudgmentApi => {
             const error = readError(data);
             if (error?.includes(REMOVED_MESSAGE)) {
                 return { kind: 'removed' };
+            }
+            if (error?.includes(UNAVAILABLE_MESSAGE)) {
+                return { kind: 'unavailable' };
             }
             if (error !== undefined || !isRecord(data)) {
                 throw new JudicialApiError(`JDoc ${requested} 回應錯誤：${error ?? typeof data}`);

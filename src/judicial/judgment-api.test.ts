@@ -6,6 +6,7 @@ import { createJudgmentApi, fromJDocResponse, JudicialApiError, JudicialAuthErro
 const BASE = 'https://data.judicial.gov.tw/jdg/api';
 const REMOVED = { error: '查無資料，本裁判可能未公開或已從系統移除，若您曾經下載過本裁判，亦請您將其移除！謝謝！' };
 const AUTH_FAILED = { error: '驗證失敗' };
+const UNAVAILABLE = { error: '並未將物件參考設定為物件的執行個體。' };
 
 type Responder = (body: Record<string, unknown>) => HttpResponse | Error;
 
@@ -67,6 +68,12 @@ describe('createJudgmentApi', () => {
         const { http } = fakeHttp({ '/Auth': [token('t1')], '/JDoc': [ok(REMOVED)] });
 
         await expect(createApi(http).getDocument(RENTAL_JID)).resolves.toEqual({ kind: 'removed' });
+    });
+
+    it('should report a judgment whose full text the API cannot serve', async () => {
+        const { http } = fakeHttp({ '/Auth': [token('t1')], '/JDoc': [ok(UNAVAILABLE)] });
+
+        await expect(createApi(http).getDocument(RENTAL_JID)).resolves.toEqual({ kind: 'unavailable' });
     });
 
     it('should throw JudicialAuthError when the credentials are rejected', async () => {

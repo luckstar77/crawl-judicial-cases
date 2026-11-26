@@ -31,11 +31,14 @@ export interface DailySyncSummary {
     listed: number;
     /** 通過 JID 預先篩選（地方法院／簡易庭民事第一審） */
     prefiltered: number;
+    /** JDoc 回傳全文或已移除的判決數 */
     fetched: number;
     /** 寫入（dry-run 時為將寫入）的租賃糾紛判決 */
     upserted: number;
     /** JDoc 回覆已移除的判決數 */
     removedUpstream: number;
+    /** JDoc 固定回錯誤、拿不到全文的判決（多為調解或不公開案件）；不算失敗，也不刪除 */
+    unavailable: number;
     /** 因司法院移除而從資料庫刪除（dry-run 時為將刪除）的判決 */
     removed: number;
     removedComments: number;
@@ -49,6 +52,22 @@ export interface DailySyncSummary {
     /** 超過 06:00 服務時間而停止，未處理的 JID 數 */
     skippedAfterServiceWindow: number;
 }
+
+/**
+ * 判斷這次同步是否需要以非 0 結束代碼提醒。
+ * 少數判決拿不到全文是常態（實測約 15%），但多於成功取得的筆數時，多半是 JDoc 整體異常。
+ */
+export const describeDailySyncProblem = (
+    summary: Pick<DailySyncSummary, 'fetched' | 'unavailable' | 'errors'>
+): string | undefined => {
+    if (summary.errors > 0) {
+        return `${summary.errors} 筆判決處理失敗，詳見 failures`;
+    }
+    if (summary.unavailable > summary.fetched) {
+        return `JDoc 有 ${summary.unavailable} 筆無法取得全文，比成功取得的 ${summary.fetched} 筆還多，服務可能異常`;
+    }
+    return undefined;
+};
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -69,6 +88,7 @@ export const runDailySync = async (
         fetched: 0,
         upserted: 0,
         removedUpstream: 0,
+        unavailable: 0,
         removed: 0,
         removedComments: 0,
         removedLikes: 0,
@@ -149,6 +169,10 @@ export const runDailySync = async (
             }
             try {
                 const result = await deps.api.getDocument(jid);
+                if (result.kind === 'unavailable') {
+                    summary.unavailable += 1;
+                    continue;
+                }
                 summary.fetched += 1;
                 if (result.kind === 'removed') {
                     summary.removedUpstream += 1;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JDocResult, JudgmentApi, JudicialApiError, JudicialAuthError } from '../judicial/judgment-api';
-import { runDailySync } from './daily-sync';
+import { describeDailySyncProblem, runDailySync } from './daily-sync';
 import { createInMemoryJudgmentStore } from './testing/in-memory-judgment-store';
 import { LOAN_JID, loanRaw, RENTAL_JID, rentalRaw } from './testing/fixtures';
 
@@ -62,6 +62,7 @@ describe('runDailySync', () => {
             fetched: 4,
             upserted: 2,
             removedUpstream: 1,
+            unavailable: 0,
             removed: 1,
             removedComments: 2,
             removedLikes: 1,
@@ -96,6 +97,20 @@ describe('runDailySync', () => {
 
         expect(summary).toMatchObject({ removedUpstream: 1, removed: 0 });
         expect(store.writes).toEqual([]);
+    });
+
+    it('should skip a judgment the API cannot serve without counting it as an error', async () => {
+        const store = createInMemoryJudgmentStore([RENTAL_JID]);
+        const api = fakeApi([RENTAL_JID, NEW_RENTAL_JID], {
+            getDocument: vi.fn(async (jid: string) =>
+                jid === RENTAL_JID ? { kind: 'unavailable' as const } : documents[jid]
+            ),
+        });
+
+        const summary = await run(api, store).promise;
+
+        expect(summary).toMatchObject({ fetched: 1, unavailable: 1, upserted: 1, removed: 0, deletedNotRental: 0, errors: 0 });
+        expect([...store.judgments.keys()].sort()).toEqual([NEW_RENTAL_JID, RENTAL_JID].sort());
     });
 
     it('should make no writes in dry-run but report what would happen', async () => {
@@ -192,5 +207,28 @@ describe('runDailySync', () => {
         expect(summary.errors).toBe(105);
         expect(summary.failures).toHaveLength(100);
         expect(summary.failures[0].message).toBe('boom');
+    });
+});
+
+describe('describeDailySyncProblem', () => {
+    const base = { fetched: 2399, unavailable: 429, errors: 0 };
+
+    it('should accept a run with a minority of unavailable judgments and no errors', () => {
+        expect(describeDailySyncProblem(base)).toBeUndefined();
+    });
+
+    it('should report per-judgment errors', () => {
+        expect(describeDailySyncProblem({ ...base, errors: 3 })).toBe('3 筆判決處理失敗，詳見 failures');
+    });
+
+    it('should report a run where most judgments were unavailable', () => {
+        expect(describeDailySyncProblem({ fetched: 10, unavailable: 11, errors: 0 })).toBe(
+            'JDoc 有 11 筆無法取得全文，比成功取得的 10 筆還多，服務可能異常'
+        );
+        expect(describeDailySyncProblem({ fetched: 0, unavailable: 1, errors: 0 })).toBeDefined();
+    });
+
+    it('should accept an empty run', () => {
+        expect(describeDailySyncProblem({ fetched: 0, unavailable: 0, errors: 0 })).toBeUndefined();
     });
 });

@@ -11,7 +11,7 @@ import { buildMysqlConfig } from '../db/mysql-config';
 import { createAxiosHttpClient, sleep } from '../judicial/http';
 import { createJudgmentApi } from '../judicial/judgment-api';
 import { assertKnownArgs, hasFlag, parseDelayMs, readOption } from '../sync/cli-options';
-import { runDailySync } from '../sync/daily-sync';
+import { describeDailySyncProblem, runDailySync } from '../sync/daily-sync';
 import { formatTaipeiTime, isWithinServiceWindow } from '../sync/service-window';
 import { requireEnv } from '../sync/require-env';
 import { describeError } from '../utils/describe-error';
@@ -40,7 +40,9 @@ import { describeError } from '../utils/describe-error';
             { dryRun, delayMs }
         );
         console.log(JSON.stringify(summary, null, 2));
-        if (summary.errors > 0) {
+        const problem = describeDailySyncProblem(summary);
+        if (problem) {
+            console.error(problem);
             process.exitCode = 1;
         }
     } finally {
