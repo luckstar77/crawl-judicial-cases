@@ -89,8 +89,27 @@ describe('extractParties', () => {
     it.each([
         ['範例工場食品股份有限公司（更名前：樣本工場食', '範例工場食品股份有限公司'],
         ['孫志豪（更名前：孫志強）', '孫志豪'],
+        ['鄒建國原名：鄒建民', '鄒建國'],
     ])('should drop the note in parentheses after %s', (line, name) => {
         expect(extractParties(header(party('被告', line))).defendant).toBe(name);
+    });
+
+    it('should read a counterclaim label that continues on the next line', () => {
+        const text = header('原告即', `反訴被告${SPACE}${SPACE}乙○○`, `訴訟代理人${SPACE}甲○○○`, `反訴原告${SPACE}${SPACE}丙○○`);
+
+        expect(extractParties(text)).toEqual({ plaintiff: '乙○○', defendant: '丙○○' });
+    });
+
+    it('should read the applicant and the respondent when there is no plaintiff or defendant label', () => {
+        const text = header(party('聲請人', '台南市消費合作社'), party('相對人', '甲○○'));
+
+        expect(extractParties(text)).toEqual({ plaintiff: '台南市消費合作社', defendant: '甲○○' });
+    });
+
+    it('should prefer the plaintiff and defendant labels over the other labels', () => {
+        const text = header(party('聲請人', '甲'), party('原告', '乙'), party('相對人', '丙'), party('被告', '丁'));
+
+        expect(extractParties(text)).toEqual({ plaintiff: '乙', defendant: '丁' });
     });
 
     it('should read a defendant who is also the legal representative', () => {
@@ -123,10 +142,63 @@ describe('extractWinningParty', () => {
         }
     );
 
-    it('should count a partial win as a plaintiff win', () => {
-        const mainText = '被告應給付原告新臺幣1萬元。\n原告其餘之訴駁回。\n訴訟費用由原告負擔十分之九，餘由被告負擔。';
+    it.each([
+        ['訴訟費用由被告負擔十分之九，餘由原告負擔。', 'plaintiff'],
+        ['訴訟費用由被告負擔百分之3，餘由原告負擔。', 'defendant'],
+        ['訴訟費用由被告負擔8%，餘由原告負擔。', 'defendant'],
+        ['訴訟費用由原告負擔千分之一，其餘由被告負擔。', 'plaintiff'],
+        ['訴訟費用百分之九十九由被告負擔，餘由原告負擔。', 'plaintiff'],
+        ['訴訟費用新臺幣1,000元，其中新臺幣900元由被告負擔，餘由原告負擔。', 'plaintiff'],
+        ['訴訟費用1,000元由被告負擔80元，餘由原告負擔。', 'defendant'],
+        ['訴訟費用由原告負擔。', 'defendant'],
+        ['訴訟費用由被告負擔二分之一，餘由原告負擔。', 'plaintiff'],
+        ['本判決第一項得假執行。', 'plaintiff'],
+        ['訴訟費用新臺幣4,410元，其中新臺幣2,130元由被告負擔，餘由原告負擔。', 'plaintiff'],
+        ['訴訟費用新臺幣3,200元(業由原告預納)由被告負擔。', 'plaintiff'],
+    ])('should decide a partial win by the cost shares: %s', (costs, winner) => {
+        const mainText = `被告應給付原告新臺幣1萬元。\n原告其餘之訴駁回。\n${costs}`;
+
+        expect(extractWinningParty(judgmentWith(mainText))).toBe(winner);
+    });
+
+    it('should count an eviction order as a plaintiff win even when the plaintiff bears most of the costs', () => {
+        const mainText = [
+            '被告應給付原告新臺幣7萬4,000元。',
+            '被告應將門牌號碼臺南市○○區○○路○○○號房屋遷讓返還原告。',
+            '訴訟費用新臺幣7,710元，由被告連帶負擔新臺幣1,000元，餘由原告負擔。',
+            '原告其餘之訴及假執行之聲請均駁回。',
+        ].join('\n');
 
         expect(extractWinningParty(judgmentWith(mainText))).toBe('plaintiff');
+    });
+
+    it('should not count a returned deposit as an eviction order', () => {
+        const mainText = '被告應返還原告押租金新臺幣1萬元。\n原告其餘之訴駁回。\n訴訟費用由原告負擔十分之九，餘由被告負擔。';
+
+        expect(extractWinningParty(judgmentWith(mainText))).toBe('defendant');
+    });
+
+    it('should count a granted declaratory claim as relief for the plaintiff', () => {
+        const mainText = '確認原告就系爭房屋有優先承租權存在。\n原告其餘之訴駁回。\n訴訟費用由被告負擔二分之一，餘由原告負擔。';
+
+        expect(extractWinningParty(judgmentWith(mainText))).toBe('plaintiff');
+    });
+
+    it('should follow the main text when the winner bears the costs', () => {
+        expect(extractWinningParty(judgmentWith('被告應將系爭房屋遷讓返還原告。\n訴訟費用由原告負擔。'))).toBe('plaintiff');
+        expect(extractWinningParty(judgmentWith('原告之訴駁回。\n訴訟費用由被告負擔。'))).toBe('defendant');
+    });
+
+    it('should end the main text at a reasons heading with a prefix', () => {
+        const text = `${header(party('原告', '甲'))}\n主文\n原告之訴駁回。\n訴訟標的及理由要領：\n一、原告主張：被告應給付租金。`;
+
+        expect(extractWinningParty(text)).toBe('defendant');
+    });
+
+    it('should not read the parties statements as main text when the reasons heading is missing', () => {
+        const text = `${header(party('原告', '甲'))}\n主文\n原告之訴駁回。\n一、原告主張：被告應給付租金。`;
+
+        expect(extractWinningParty(text)).toBe('defendant');
     });
 
     it('should not count an order on the counterclaim defendant as a plaintiff win', () => {
@@ -159,9 +231,12 @@ describe('extractWinningParty', () => {
         expect(extractWinningParty(judgmentWith(mainText))).toBe('defendant');
     });
 
-    it('should return undefined when both parties share the costs equally', () => {
-        expect(extractWinningParty(judgmentWith('確認兩造間租賃關係不存在。\n訴訟費用由兩造各負擔二分之一。'))).toBeUndefined();
-    });
+    it.each(['本件訴訟費用由兩造各負擔二分之一。', '本件訴訟費用由被告負擔二分之一，餘由原告負擔。'])(
+        'should return undefined when both parties share the costs equally: %s',
+        (text) => {
+            expect(extractWinningParty(text)).toBeUndefined();
+        }
+    );
 
     it('should fall back to the litigation costs when there is no main text', () => {
         expect(extractWinningParty('本件訴訟費用由原告負擔。')).toBe('defendant');
@@ -188,6 +263,9 @@ describe('extractMonthlyRent', () => {
         ['約定租金新臺幣1萬2,000元，每月5日前給付。', 12000],
         ['租金約定每年24,000元，即每月2,000元。', 2000],
         ['被告應以每月25,000元計算相當於租金之不當得利。', 25000],
+        ['原告以每月新臺幣（下同）1萬元之租金出租予被告。', 10000],
+        ['丁○○以每月新臺幣（下同）350,000元將系爭房屋出租予被告。', 350000],
+        ['每月5,500元之租金及水電費。', 5500],
     ])('should read the monthly rent from %s', (text, rent) => {
         expect(extractMonthlyRent(text)).toBe(rent);
     });

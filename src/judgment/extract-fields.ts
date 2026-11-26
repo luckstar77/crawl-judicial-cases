@@ -11,10 +11,40 @@ export interface JudgmentFields {
     city?: string;
 }
 
+type Role = 'plaintiff' | 'defendant';
+
 interface Parties {
     plaintiff?: string;
     defendant?: string;
 }
+
+// ---------------------------------------------------------------------------
+// 金額
+// ---------------------------------------------------------------------------
+
+const NUMERAL = '0-9.零〇一二三四五六七八九十百千萬壹貳參叁肆伍陸柒捌玖拾佰仟兩';
+const AMOUNT = `([${NUMERAL}]*[0-9零〇一二三四五六七八九十壹貳參叁肆伍陸柒捌玖拾兩][${NUMERAL}]*)元`;
+const TEN_THOUSAND = 10000;
+
+const FULL_WIDTH_DIGIT = /[０-９]/g;
+const THOUSANDS_SEPARATOR = /(?<=[0-9])[,，](?=[0-9]{3})/g;
+const DECIMAL_TEN_THOUSAND = /^([0-9]+\.[0-9]+)萬$/;
+
+const compact = (text: string): string => text.replace(/\s+/g, '');
+
+/** 去掉空白、把全形數字轉半形並拿掉千分位，方便比對金額 */
+const normalizeAmounts = (text: string): string =>
+    compact(text)
+        .replace(FULL_WIDTH_DIGIT, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xfee0))
+        .replace(THOUSANDS_SEPARATOR, '');
+
+const parseAmount = (amount: string): number | undefined => {
+    const decimal = DECIMAL_TEN_THOUSAND.exec(amount);
+    if (decimal) {
+        return Math.round(Number(decimal[1]) * TEN_THOUSAND);
+    }
+    return parseChineseNumber(amount);
+};
 
 // ---------------------------------------------------------------------------
 // 當事人
@@ -26,20 +56,32 @@ const HEADER_END = /^[^\S\n]*(?:上列[^\n]{0,6}?(?:當事人|兩造)|主[^\S\n]
 const MAX_HEADER_LINES = 40;
 
 // 「原   告」「被告即反訴原告」「原告兼反訴被告」等標籤，字與字之間可能有空白
-const PARTY_LABEL = /^\s*(原|被)\s*告(?:\s*(?:即|兼)\s*反\s*訴\s*[原被]\s*告)?\s*(.*)$/;
+const PARTY_LABEL =
+    /^\s*(原\s*告|被\s*告|聲\s*請\s*人|相\s*對\s*人|反\s*訴\s*被\s*告|反\s*訴\s*原\s*告)(?:\s*(?:即|兼)\s*反\s*訴\s*[原被]\s*告)?\s*(.*)$/;
+// 數字越小越優先：支付命令轉成訴訟的判決沿用「聲請人、相對人」，只有反訴標籤時才用反訴的稱呼
+const LABEL_ROLE: Record<string, [Role, number]> = {
+    原告: ['plaintiff', 0],
+    被告: ['defendant', 0],
+    聲請人: ['plaintiff', 1],
+    相對人: ['defendant', 1],
+    反訴被告: ['plaintiff', 2],
+    反訴原告: ['defendant', 2],
+};
+// 「原告即」換行後才寫「反訴被告 某某」
+const LABEL_CONTINUES = /^(?:即|兼)$/;
 
 // 標籤後接代理人或「共同」之類字樣時，該行不是當事人本人
 const NOT_A_PARTY = /^(?:訴訟|法定|複|共同|特別)?代理人|^共同|^上列/;
 
 // 住址或送達處所從這些字開始，例如「住桃園市」「設新竹縣」「原住基隆市」
 const ADDRESS_START =
-    /(?:原住|現住|住所?|居所?|設|址|營業所)(?:[:：])?(?=(?:臺|台)?[一-鿿]{1,3}[市縣]|○)|指定送達|送達(?:處所|地址)/;
+    /(?:原住|現住|住所?|居所?|設|址|營業所)(?:[:：])?(?=(?:臺|台)?[\u4e00-\u9fff]{1,3}[市縣]|○)|指定送達|送達(?:處所|地址)/;
 
 // 標籤自成一行時，姓名可能寫在下一行的「即反訴被告 某某」或縮排的續行
-const COUNTERCLAIM_ROLE_LINE = /^\s*(?:即|兼)\s*反\s*訴\s*[原被]\s*告\s*(.*)$/;
+const COUNTERCLAIM_ROLE_LINE = /^\s*(?:(?:即|兼)\s*)?反\s*訴\s*[原被]\s*告\s*(.*)$/;
 const CONTINUATION_LINE = /^\s+\S/;
 
-const NAME_NOTE_START = /[（(]/;
+const NAME_NOTE_START = /[（(]|(?:原名|更名前|曾用名)[:：]/;
 const NAME_PUNCTUATION = /[，。；：:、]/;
 const MAX_NAME_LENGTH = 50;
 
@@ -61,14 +103,14 @@ const toPartyName = (rest: string): string | undefined => {
 };
 
 const nameOnNextLine = (nextLine: string | undefined): string | undefined => {
-    if (nextLine === undefined || PARTY_LABEL.test(nextLine)) {
+    if (nextLine === undefined) {
         return undefined;
     }
     const counterclaimRole = COUNTERCLAIM_ROLE_LINE.exec(nextLine);
     if (counterclaimRole) {
         return toPartyName(counterclaimRole[1]);
     }
-    return CONTINUATION_LINE.test(nextLine) ? toPartyName(nextLine) : undefined;
+    return CONTINUATION_LINE.test(nextLine) && !PARTY_LABEL.test(nextLine) ? toPartyName(nextLine) : undefined;
 };
 
 const headerLines = (text: string): string[] => {
@@ -79,22 +121,31 @@ const headerLines = (text: string): string[] => {
 
 /** 從判決開頭的當事人欄位擷取第一位原告與第一位被告，不含代理人與住址。 */
 export const extractParties = (text: string): Parties => {
-    const parties: Parties = {};
+    const found: Partial<Record<Role, { name: string; priority: number }>> = {};
     const lines = headerLines(text);
     lines.forEach((line, index) => {
         const match = PARTY_LABEL.exec(line);
         if (!match) {
             return;
         }
-        const role = match[1] === '原' ? 'plaintiff' : 'defendant';
-        if (parties[role]) {
+        const [role, priority] = LABEL_ROLE[compact(match[1])];
+        const current = found[role];
+        if (current && current.priority <= priority) {
             return;
         }
-        const name = match[2].trim() ? toPartyName(match[2]) : nameOnNextLine(lines[index + 1]);
+        const rest = match[2].trim();
+        const name = rest && !LABEL_CONTINUES.test(rest) ? toPartyName(rest) : nameOnNextLine(lines[index + 1]);
         if (name) {
-            parties[role] = name;
+            found[role] = { name, priority };
         }
     });
+    const parties: Parties = {};
+    if (found.plaintiff) {
+        parties.plaintiff = found.plaintiff.name;
+    }
+    if (found.defendant) {
+        parties.defendant = found.defendant.name;
+    }
     return parties;
 };
 
@@ -103,24 +154,44 @@ export const extractParties = (text: string): Parties => {
 // ---------------------------------------------------------------------------
 
 const MAIN_TEXT_START = /^[^\S\n]*主[^\S\n]*文[^\S\n]*(?:[:：]|$)/m;
-const MAIN_TEXT_END = /^[^\S\n]*(?:事[^\S\n]*實|理[^\S\n]*由)/m;
+// 「事實及理由」「訴訟標的及理由要領」「爭執事項及理由要領」等標題
+const MAIN_TEXT_END = /^[^\S\n]*[^\n。，]{0,8}?(?:事[^\S\n]*實|理[^\S\n]*由)/m;
 const MAX_MAIN_TEXT_LENGTH = 2000;
+// 沒有理由標題時，遇到兩造的主張或聲明就表示主文已經結束
+const PARTY_STATEMENT = /主張|聲明|陳述|要領/;
 
 // 主文各項前的編號，例如「一、」「㈠」「(1)」
 const ITEM_NUMBER = /^(?:[一二三四五六七八九十]+、|[㈠-㈩]、?|[(（]?[0-9０-９]+[)）、.．])/;
 
-// 被告被命給付、遷讓或為其他行為，代表原告至少部分勝訴
-const ORDER_ON_DEFENDANT = /^(?:本訴)?被告[^。，；]{0,40}?應/;
+// 原告被命給付，是以原本的稱呼寫反訴的結果
 const ORDER_ON_PLAINTIFF = /^(?:本訴)?原告[^。，；]{0,40}?應/;
 // 「原告之訴駁回」是全部敗訴；「原告其餘之訴駁回」只是部分敗訴
 const CLAIM_DISMISSED = /^(?:本訴)?原告之訴[^。]*駁回/;
+const CLAIM_PARTLY_DISMISSED = /^(?:本訴)?原告其餘(?:之訴|請求)[^。]*駁回/;
+// 主文中駁回、訴訟費用與假執行以外的句子，都是法院准許原告的請求（給付、遷讓、確認等）
+const NOT_RELIEF = /駁回|訴訟費用|假執行|供擔保/;
+// 命被告遷讓或返還房屋：房東的主要請求成立，即使金錢請求只准了一小部分
+const EVICTION_ORDER = /遷讓|遷出|騰空|(?:房屋|建物|房地|土地)[^。]{0,30}?(?:返還|交還)/;
 const COUNTERCLAIM = /反訴/;
 const COUNTERCLAIM_EXCEPTION = /^本訴/;
 
-const COST_BURDEN = /訴訟費用[^。]{0,40}?由(原告|被告)[^。，；]{0,20}?負擔([^。，；]{0,10})/;
-const FRACTION = /^([零〇一二三四五六七八九十百]+)分之([零〇一二三四五六七八九十百]+)/;
+const COST_BURDEN = /訴訟費用([^。]{0,40}?)由(原告|被告)[^。，；由]{0,20}?負擔([^。，；]{0,12})/;
+// 「(業由原告預納)」之類的括號說明不是負擔方
+const PARENTHETICAL_NOTE = /[（(][^）)]{0,20}[）)]/g;
+const FRACTION_NUMERAL = '[0-9零〇一二三四五六七八九十百千]+';
+const FRACTION = new RegExp(`(${FRACTION_NUMERAL})分之(${FRACTION_NUMERAL})`);
+const PERCENT = /([0-9]+(?:\.[0-9]+)?)[%％]/;
+const COST_AMOUNT = new RegExp(AMOUNT, 'g');
+const HALF = 0.5;
+// 負擔比例在四成到六成之間時，視為看不出勝敗
+const CLOSE_CALL_MARGIN = 0.1;
 
-const compact = (text: string): string => text.replace(/\s+/g, '');
+type PartyName = '原告' | '被告';
+
+interface CostBurden {
+    payer: PartyName;
+    share?: number;
+}
 
 const sliceMainText = (text: string): string | undefined => {
     const start = MAIN_TEXT_START.exec(text);
@@ -132,17 +203,25 @@ const sliceMainText = (text: string): string | undefined => {
     return rest.slice(0, end >= 0 ? end : MAX_MAIN_TEXT_LENGTH);
 };
 
-const toSentences = (mainText: string): string[] =>
-    compact(mainText)
+const toSentences = (mainText: string): string[] => {
+    const sentences = normalizeAmounts(mainText)
         .split('。')
         .map((sentence) => sentence.replace(ITEM_NUMBER, ''))
-        .filter((sentence) => sentence.length > 0)
-        .filter((sentence) => !COUNTERCLAIM.test(sentence) || COUNTERCLAIM_EXCEPTION.test(sentence));
+        .filter((sentence) => sentence.length > 0);
+    const statementIndex = sentences.findIndex((sentence) => PARTY_STATEMENT.test(sentence));
+    return (statementIndex >= 0 ? sentences.slice(0, statementIndex) : sentences).filter(
+        (sentence) => !COUNTERCLAIM.test(sentence) || COUNTERCLAIM_EXCEPTION.test(sentence)
+    );
+};
 
-const opponentOf = (party: '原告' | '被告'): WinningParty => (party === '原告' ? 'defendant' : 'plaintiff');
+const isGrantedRelief = (sentence: string): boolean => !NOT_RELIEF.test(sentence) && !ORDER_ON_PLAINTIFF.test(sentence);
 
-const parseShare = (fraction: string): number | undefined => {
-    const match = FRACTION.exec(fraction);
+const parseFraction = (text: string): number | undefined => {
+    const percent = PERCENT.exec(text);
+    if (percent) {
+        return Number(percent[1]) / 100;
+    }
+    const match = FRACTION.exec(text);
     if (!match) {
         return undefined;
     }
@@ -151,45 +230,76 @@ const parseShare = (fraction: string): number | undefined => {
     return denominator && numerator !== undefined ? numerator / denominator : undefined;
 };
 
-/** 依「訴訟費用由誰負擔」推定勝敗：負擔較多的一方敗訴。 */
-const winnerByCosts = (text: string): WinningParty | undefined => {
-    const match = COST_BURDEN.exec(compact(text));
+// 「訴訟費用1,000元由被告負擔80元」「訴訟費用新臺幣1,000元，其中新臺幣900元由被告負擔」
+const parseAmountShare = (beforePayer: string, afterPayer: string): number | undefined => {
+    const amounts = [...beforePayer.matchAll(COST_AMOUNT), ...afterPayer.matchAll(COST_AMOUNT)].map((match) =>
+        parseAmount(match[1])
+    );
+    const total = amounts[0];
+    const part = amounts[amounts.length - 1];
+    if (amounts.length < 2 || !total || part === undefined) {
+        return undefined;
+    }
+    return part / total;
+};
+
+/** 找出主文中第一個負擔訴訟費用的當事人與其負擔比例；沒有比例代表全部負擔。 */
+const findCostBurden = (text: string): CostBurden | undefined => {
+    const match = COST_BURDEN.exec(text.replace(PARENTHETICAL_NOTE, ''));
     if (!match) {
         return undefined;
     }
-    const payer = match[1] as '原告' | '被告';
-    const share = parseShare(match[2]);
-    if (share === undefined || share > 0.5) {
-        return opponentOf(payer);
+    const [, beforePayer, payer, afterPayer] = match;
+    const share = parseFraction(afterPayer) ?? parseFraction(beforePayer) ?? parseAmountShare(beforePayer, afterPayer);
+    const isValidShare = share !== undefined && share >= 0 && share <= 1;
+    return { payer: payer as PartyName, share: isValidShare ? share : undefined };
+};
+
+const roleOf = (party: PartyName): WinningParty => (party === '原告' ? 'plaintiff' : 'defendant');
+const opponentOf = (party: PartyName): WinningParty => (party === '原告' ? 'defendant' : 'plaintiff');
+
+/** 依訴訟費用的負擔推定勝敗：負擔明顯較多的一方敗訴，接近各半時無法判斷。 */
+const winnerByCosts = (cost: CostBurden | undefined): WinningParty | undefined => {
+    if (!cost) {
+        return undefined;
     }
-    return share < 0.5 ? (payer === '原告' ? 'plaintiff' : 'defendant') : undefined;
+    if (cost.share === undefined || cost.share > HALF + CLOSE_CALL_MARGIN) {
+        return opponentOf(cost.payer);
+    }
+    return cost.share < HALF - CLOSE_CALL_MARGIN ? roleOf(cost.payer) : undefined;
 };
 
 /**
- * 依主文判斷勝敗：被告被命給付或遷讓即為原告勝訴（含一部勝訴），
- * 原告之訴全部駁回即為被告勝訴；判斷不出時再看訴訟費用的負擔。
- * 反訴的主文不列入判斷。
+ * 依主文判斷勝敗（反訴的主文不列入）：
+ * - 法院准許原告的請求且沒有駁回其餘請求：原告勝訴
+ * - 一部勝訴（准許部分、駁回其餘）：命被告遷讓或返還房屋算原告勝訴；
+ *   否則負擔明顯較多訴訟費用的一方敗訴，看不出來時算原告勝訴
+ * - 原告之訴全部駁回，或原告被命給付：被告勝訴
+ * - 其他情形只看訴訟費用的負擔
  */
 export const extractWinningParty = (text: string): WinningParty | undefined => {
     const mainText = sliceMainText(text);
     if (mainText === undefined) {
-        return winnerByCosts(text);
+        return winnerByCosts(findCostBurden(normalizeAmounts(text)));
     }
     const sentences = toSentences(mainText);
-    const orderOnDefendant = sentences.some((sentence) => ORDER_ON_DEFENDANT.test(sentence));
+    const cost = findCostBurden(sentences.join('。'));
+    const granted = sentences.some(isGrantedRelief);
     const orderOnPlaintiff = sentences.some((sentence) => ORDER_ON_PLAINTIFF.test(sentence));
     const claimDismissed = sentences.some((sentence) => CLAIM_DISMISSED.test(sentence));
+    const partlyDismissed = sentences.some((sentence) => CLAIM_PARTLY_DISMISSED.test(sentence));
 
-    if (orderOnDefendant && !orderOnPlaintiff && !claimDismissed) {
-        return 'plaintiff';
+    if (granted && !claimDismissed && !orderOnPlaintiff) {
+        const evictionGranted = sentences.some((sentence) => isGrantedRelief(sentence) && EVICTION_ORDER.test(sentence));
+        if (!partlyDismissed || evictionGranted) {
+            return 'plaintiff';
+        }
+        return winnerByCosts(cost) ?? 'plaintiff';
     }
-    if (claimDismissed && !orderOnDefendant) {
+    if (!granted && (claimDismissed || orderOnPlaintiff)) {
         return 'defendant';
     }
-    if (orderOnPlaintiff && !orderOnDefendant) {
-        return 'defendant';
-    }
-    return winnerByCosts(sentences.join('。'));
+    return winnerByCosts(cost);
 };
 
 // ---------------------------------------------------------------------------
@@ -198,10 +308,6 @@ export const extractWinningParty = (text: string): WinningParty | undefined => {
 
 const MIN_MONTHLY_RENT = 1000;
 const MAX_MONTHLY_RENT = 1000000;
-const TEN_THOUSAND = 10000;
-
-const NUMERAL = '0-9.零〇一二三四五六七八九十百千萬壹貳參叁肆伍陸柒捌玖拾佰仟兩';
-const AMOUNT = `([${NUMERAL}]*[0-9零〇一二三四五六七八九十壹貳參叁肆伍陸柒捌玖拾兩][${NUMERAL}]*)元`;
 // 金額前常見的「為」「新臺幣」「（下同）」等字樣。不能含數字，避免跳過真正的租金；
 // 也不能含押金、違約金、管理費或欠款總額的字樣
 const FILLER = `(?:(?!押租?金|保證金|違約金|管理費|共計|合計|總計|積欠)[^。；，${NUMERAL}]){0,16}?`;
@@ -216,6 +322,10 @@ const RENT_PATTERNS: RegExp[][] = [
             'g'
         ),
         new RegExp(`每個?月${DAY_OF_MONTH}(?:繳付|給付|支付|繳納|交付)租金${FILLER}${AMOUNT}`, 'g'),
+        // 「以每月1萬元之租金出租」「每月5,500元之租金」
+        new RegExp(`每個?月${FILLER}${AMOUNT}(?:之|的)?租金`, 'g'),
+        // 「以每月35萬元將系爭房屋出租予被告」
+        new RegExp(`以每個?月${FILLER}${AMOUNT}[^。；]{0,40}?(?:出租|承租|租用)`, 'g'),
     ],
     // 「租金新臺幣1萬元，每月5日前給付」
     [new RegExp(`租金(?:為|係|是)?${FILLER}${AMOUNT}整?[，,]?(?:應|須|並)?(?:於|在|按)?每個?月(?!份)`, 'g')],
@@ -227,23 +337,6 @@ const RENT_PATTERNS: RegExp[][] = [
         new RegExp(`(?:以|按)每個?月${FILLER}${AMOUNT}計算`, 'g'),
     ],
 ];
-
-const FULL_WIDTH_DIGIT = /[０-９]/g;
-const THOUSANDS_SEPARATOR = /(?<=[0-9])[,，](?=[0-9]{3})/g;
-const DECIMAL_TEN_THOUSAND = /^([0-9]+\.[0-9]+)萬$/;
-
-const normalizeAmounts = (text: string): string =>
-    compact(text)
-        .replace(FULL_WIDTH_DIGIT, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xfee0))
-        .replace(THOUSANDS_SEPARATOR, '');
-
-const parseAmount = (amount: string): number | undefined => {
-    const decimal = DECIMAL_TEN_THOUSAND.exec(amount);
-    if (decimal) {
-        return Math.round(Number(decimal[1]) * TEN_THOUSAND);
-    }
-    return parseChineseNumber(amount);
-};
 
 const isPlausibleRent = (rent: number | undefined): rent is number =>
     rent !== undefined && Number.isInteger(rent) && rent >= MIN_MONTHLY_RENT && rent <= MAX_MONTHLY_RENT;
