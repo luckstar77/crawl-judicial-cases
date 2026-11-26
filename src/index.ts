@@ -4,22 +4,16 @@ dotenv.config();
 
 import { Knex } from 'knex';
 import * as knex from './db/knex';
+import { buildMysqlConfig } from './db/mysql-config';
 import updateJudicialFileset from './utils/updateJudicialFileset';
 import upsertJudicialDataset from './utils/upsertJudicialDataset';
 import upsertOriginFileset from './utils/upsertOriginFileset';
 import updatePercentile from './utils/updatePercentile';
 import updateJudicialFilesetByMongodb from './utils/updateJudicialFilesetByMongodb';
 
-// 連線本機 MySQL「rental」資料庫的 Knex 設定
+// MySQL 連線設定：讀取 MYSQL_HOST 等環境變數，未設定時連本機「rental」資料庫
 const config: Knex.Config = {
-    client: 'mysql2',
-    connection: {
-        host: '127.0.0.1',
-        port: 3306,
-        user: 'root',
-        password: '',
-        database: 'rental',
-    },
+    ...buildMysqlConfig(process.env),
     log: {
         warn(message) {
             console.log(message);
