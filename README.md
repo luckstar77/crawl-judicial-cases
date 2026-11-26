@@ -135,23 +135,33 @@ npm run sync:monthly -- --month=202609 --dry-run   # 不寫入資料庫
 
 同步與維護腳本（`sync:*`、`reclassify`、`reextract`）遇到未知的參數會直接失敗，避免打錯的 `--dryrun` 被忽略而真的寫入或刪除。
 
-### 建議的 crontab（Ubuntu）
+### 部署（Ubuntu 主機）
 
-主機時區可能是 UTC。先用 `timedatectl` 確認；若 cron 支援 `CRON_TZ`，用下面第一種寫法，否則用 UTC 時間（臺北 01:10 = UTC 前一天 17:10；臺北 20 日 01:40 = UTC 19 日 17:40）。`logs/` 目錄需先建立。
-
-```cron
-CRON_TZ=Asia/Taipei
-# 每日 01:10 同步裁判書開放 API（服務時間 00:00–06:00）
-10 1 * * * cd /path/to/crawl-judicial-cases && npm run sync:daily >> logs/sync-daily.log 2>&1
-# 每月 20 日 01:40 先處理刪除清單，再匯入兩個月前的資料
-40 1 20 * * cd /path/to/crawl-judicial-cases && npm run sync:delete-infor >> logs/sync-delete-infor.log 2>&1; npm run sync:monthly -- --month=$(date -d '2 months ago' +\%Y\%m) >> logs/sync-monthly.log 2>&1
+```bash
+git clone https://github.com/luckstar77/crawl-judicial-cases.git
+cd crawl-judicial-cases
+npm ci --omit=dev   # 只裝執行需要的套件（ts-node、typescript 屬於執行期依賴）
+mkdir -p logs
+# 建立 .env 並 chmod 600：JUDICIAL_ACCOUNT、JUDICIAL_PWD、MYSQL_USER、MYSQL_PASSWORD（見「環境變數」）
 ```
 
-UTC 主機、不支援 `CRON_TZ` 時：
+更新時執行 `git pull && npm ci --omit=dev`。型別檢查由 CI 負責，主機上以 `TS_NODE_TRANSPILE_ONLY=true` 執行，可省下記憶體與啟動時間。
+
+資料庫帳號只需要 `rental` 的 `judicialFileset`、`comments`、`likes` 三張表的 SELECT、INSERT、UPDATE、DELETE 權限。
+
+### 建議的 crontab（Ubuntu）
+
+主機時區可能是 UTC。先用 `timedatectl` 確認；若 cron 支援 `CRON_TZ`，可加上 `CRON_TZ=Asia/Taipei` 改用臺北時間，否則用 UTC 時間（臺北 01:10 = UTC 前一天 17:10；臺北 20 日 01:40 = UTC 19 日 17:40）。
+
+所有工作共用一把 `flock` 鎖，依序執行：每月工作在每日同步跑完後才開始，避免兩個工作同時佔用記憶體（每日同步約 2 小時 40 分；每月匯入一個月約 2 分鐘，記憶體峰值約 240 MB）。`PATH` 要指向主機上的 Node（例如 nvm 安裝的路徑）。
 
 ```cron
-10 17 * * * cd /path/to/crawl-judicial-cases && npm run sync:daily >> logs/sync-daily.log 2>&1
-40 17 19 * * cd /path/to/crawl-judicial-cases && npm run sync:delete-infor >> logs/sync-delete-infor.log 2>&1; npm run sync:monthly -- --month=$(date -d '2 months ago' +\%Y\%m) >> logs/sync-monthly.log 2>&1
+PATH=/home/ubuntu/.nvm/versions/node/v22.23.5/bin:/usr/bin:/bin
+TS_NODE_TRANSPILE_ONLY=true
+# 每日臺北 01:10 同步裁判書開放 API（服務時間 00:00–06:00）
+10 17 * * * cd /path/to/crawl-judicial-cases && flock -w 3600 /tmp/crawl-judicial-cases.lock npm run -s sync:daily >> logs/sync-daily.log 2>&1
+# 每月臺北 20 日 01:40 先處理刪除清單，再匯入兩個月前的資料
+40 17 19 * * cd /path/to/crawl-judicial-cases && flock -w 18000 /tmp/crawl-judicial-cases.lock sh -c 'npm run -s sync:delete-infor >> logs/sync-delete-infor.log 2>&1; npm run -s sync:monthly -- --month=$(date -d "2 months ago" +\%Y\%m) >> logs/sync-monthly.log 2>&1'
 ```
 
 月份資料集約在兩個月後的中旬發布（2026-11-26 時最新的是 202609，標題為 20261116Update），所以 20 日匯入兩個月前的資料，例如 11 月 20 日匯入 202609。若當時還沒有發布，摘要會出現 `資源清單中找不到這個月份的 RAR 資料集`，可之後再以 `--month` 補跑。
