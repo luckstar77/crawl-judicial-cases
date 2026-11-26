@@ -44,5 +44,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: shellcheck scripts/*.sh
       - run: npm run typecheck
       - run: npm run test:coverage

@@ -153,15 +153,20 @@ mkdir -p logs
 
 主機時區可能是 UTC。先用 `timedatectl` 確認；若 cron 支援 `CRON_TZ`，可加上 `CRON_TZ=Asia/Taipei` 改用臺北時間，否則用 UTC 時間（臺北 01:10 = UTC 前一天 17:10；臺北 20 日 01:40 = UTC 19 日 17:40）。
 
-所有工作共用一把 `flock` 鎖，依序執行：每月工作在每日同步跑完後才開始，避免兩個工作同時佔用記憶體（每日同步約 2 小時 40 分；每月匯入一個月約 2 分鐘，記憶體峰值約 240 MB）。`PATH` 要指向主機上的 Node（例如 nvm 安裝的路徑）。
+排程透過 `scripts/cron-job.sh` 執行，它會：
+- 讓所有工作共用一把 `flock` 鎖依序執行：每月工作等每日同步跑完才開始，避免兩個工作同時佔用記憶體。每日同步約 2 小時 40 分；每月匯入一個月約 2 分鐘，記憶體峰值約 240 MB。
+- 把工作的 `oom_score_adj` 設為 1000：記憶體不足時，核心會優先結束這個工作，而不是同一台主機上的 MySQL。
+- 把輸出附加到 `logs/<日誌名稱>.log`，並記錄開始、結束時間與結束代碼。
+
+`PATH` 要指向主機上的 Node（例如 nvm 安裝的路徑）。
 
 ```cron
 PATH=/home/ubuntu/.nvm/versions/node/v22.23.5/bin:/usr/bin:/bin
 TS_NODE_TRANSPILE_ONLY=true
 # 每日臺北 01:10 同步裁判書開放 API（服務時間 00:00–06:00）
-10 17 * * * cd /path/to/crawl-judicial-cases && flock -w 3600 /tmp/crawl-judicial-cases.lock npm run -s sync:daily >> logs/sync-daily.log 2>&1
+10 17 * * * /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-daily sync:daily
 # 每月臺北 20 日 01:40 先處理刪除清單，再匯入兩個月前的資料
-40 17 19 * * cd /path/to/crawl-judicial-cases && flock -w 18000 /tmp/crawl-judicial-cases.lock sh -c 'npm run -s sync:delete-infor >> logs/sync-delete-infor.log 2>&1; npm run -s sync:monthly -- --month=$(date -d "2 months ago" +\%Y\%m) >> logs/sync-monthly.log 2>&1'
+40 17 19 * * /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-delete-infor sync:delete-infor; /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-monthly sync:monthly -- --month=$(date -d '2 months ago' +\%Y\%m)
 ```
 
 月份資料集約在兩個月後的中旬發布（2026-11-26 時最新的是 202609，標題為 20261116Update），所以 20 日匯入兩個月前的資料，例如 11 月 20 日匯入 202609。若當時還沒有發布，摘要會出現 `資源清單中找不到這個月份的 RAR 資料集`，可之後再以 `--month` 補跑。
@@ -193,7 +198,7 @@ MYSQL_TEST_DATABASE=crawl_test MYSQL_TEST_PORT=33307 npm test
 
 ### CI
 
-GitHub Actions（`.github/workflows/ci.yml`）會在 push 到 master 和每個 pull request 時，以 Node 22 執行 lint、typecheck，並帶著 MySQL 8.0 service 跑覆蓋率測試。
+GitHub Actions（`.github/workflows/ci.yml`）會在 push 到 master 和每個 pull request 時，以 Node 22 執行 lint、`shellcheck scripts/*.sh`、typecheck，並帶著 MySQL 8.0 service 跑覆蓋率測試。
 
 ## 參考第三方 API
 - 指定主題分類代碼取得資料源清單 GET https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources
