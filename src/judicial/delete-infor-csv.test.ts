@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCsvRows, parseDeleteInforCsv } from './delete-infor-csv';
+import { createRemovedJudgmentMatcher, parseCsvRows, parseDeleteInforCsv } from './delete-infor-csv';
 
 // 格式同 2026-11 下載的 Delete-Infor.csv（UTF-8 BOM、CRLF），裁判 ID 的號次為虛構
 const SAMPLE =
@@ -28,6 +28,10 @@ describe('parseCsvRows', () => {
             ['5', '6'],
             ['7', '8'],
         ]);
+    });
+
+    it('should reject an unclosed quote instead of swallowing the rest of the file', () => {
+        expect(() => parseCsvRows('a,b,c,"TPDV,1,訴,1,20200101,1\n1,2,3,"TPDV,1,訴,2,20200101,1"')).toThrow('雙引號');
     });
 
     it('should strip the UTF-8 BOM and keep empty trailing fields', () => {
@@ -97,5 +101,19 @@ describe('parseDeleteInforCsv', () => {
 
     it('should return nothing for an empty file', () => {
         expect(parseDeleteInforCsv('\uFEFF')).toEqual({ records: [], invalidRows: 0 });
+    });
+});
+
+describe('createRemovedJudgmentMatcher', () => {
+    it('should match removed judgments exactly, or by prefix when the check number is missing', () => {
+        const incompleteRow = '20210101,200401,最高法院刑事,"TPSM,93,台上,9326,20040116"\r\n';
+        const { records } = parseDeleteInforCsv(SAMPLE + incompleteRow);
+
+        const isRemoved = createRemovedJudgmentMatcher(records);
+
+        expect(isRemoved('PTDM,93,訴,9017,20040107,1')).toBe(true);
+        expect(isRemoved('PTDM,93,訴,9017,20040107,2')).toBe(false);
+        expect(isRemoved('TPSM,93,台上,9326,20040116,1')).toBe(true);
+        expect(isRemoved('TPSM,93,台上,93260,20040116,1')).toBe(false);
     });
 });

@@ -21,6 +21,8 @@ export interface MonthlyImportDeps {
     downloadFileset: (fileSetId: string, destPath: string) => Promise<void>;
     readDocuments: (rarPath: string, extractDir: string) => AsyncIterable<ArchiveItem>;
     store: JudgmentStore;
+    /** 已列入 Delete-Infor 刪除清單的裁判書不可再匯入 */
+    isRemoved: (id: string) => boolean;
     evaluate?: (raw: RawJudgment) => JudgmentEvaluation;
     onMonthDone?: (summary: MonthSummary) => void;
 }
@@ -34,6 +36,8 @@ export interface MonthSummary {
     candidates: number;
     rental: number;
     notRental: number;
+    /** 租賃糾紛判決中已被司法院撤下（列在 Delete-Infor）而略過的數量 */
+    removed: number;
     /** 寫入（dry-run 時為將寫入）的判決 */
     upserted: number;
     invalid: number;
@@ -57,6 +61,7 @@ const importMonth = async (
         candidates: 0,
         rental: 0,
         notRental: 0,
+        removed: 0,
         upserted: 0,
         invalid: 0,
         failures: [],
@@ -97,6 +102,10 @@ const importMonth = async (
                 const evaluation = evaluate(item.document);
                 if (evaluation.kind === 'not-rental') {
                     summary.notRental += 1;
+                    continue;
+                }
+                if (deps.isRemoved(evaluation.record.id)) {
+                    summary.removed += 1;
                     continue;
                 }
                 summary.rental += 1;

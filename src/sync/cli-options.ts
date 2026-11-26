@@ -1,12 +1,34 @@
 // 同步腳本共用的命令列參數解析（純函式，方便測試）。
 export const DEFAULT_DELAY_MS = 300;
 const MONTHS_PER_YEAR = 12;
-const MONTH_PATTERN = /^(\d{4})(0[1-9]|1[0-2])$/;
+// 只接受 1900–2099 年，避免「000001」這類輸入展開成上萬個月份
+const MONTH_PATTERN = /^((?:19|20)\d{2})(0[1-9]|1[0-2])$/;
 
 export const hasFlag = (argv: string[], name: string): boolean => argv.includes(`--${name}`);
 
 export const readOption = (argv: string[], name: string): string | undefined =>
     argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+
+export interface KnownArgs {
+    /** 不帶值的旗標，例如 dry-run（--dry-run） */
+    flags: string[];
+    /** 以 --name=value 指定的參數，例如 month（--month=202609） */
+    options: string[];
+}
+
+/**
+ * 拒絕未知的參數。打錯字的 --dryrun 或 --dry-run=true 若被忽略，會讓 dry-run 變成真的寫入或刪除。
+ */
+export const assertKnownArgs = (argv: string[], known: KnownArgs): void => {
+    const isKnown = (arg: string): boolean =>
+        known.flags.some((flag) => arg === `--${flag}`) ||
+        known.options.some((option) => arg.startsWith(`--${option}=`));
+    const unknown = argv.find((arg) => !isKnown(arg));
+    if (unknown !== undefined) {
+        const accepted = [...known.flags.map((flag) => `--${flag}`), ...known.options.map((option) => `--${option}=`)];
+        throw new Error(`未知的參數：${unknown}（可用：${accepted.join(' ') || '無'}）`);
+    }
+};
 
 export const parseDelayMs = (value: string | undefined): number => {
     if (value === undefined) {

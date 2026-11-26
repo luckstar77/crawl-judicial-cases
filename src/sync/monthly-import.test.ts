@@ -39,6 +39,7 @@ const createDeps = (overrides: Partial<MonthlyImportDeps> = {}) => {
         downloadFileset: vi.fn(async () => undefined),
         readDocuments: vi.fn(() => items(ITEMS)),
         store: createInMemoryJudgmentStore(),
+        isRemoved: () => false,
         onMonthDone: vi.fn(),
         ...overrides,
     };
@@ -60,6 +61,7 @@ describe('runMonthlyImport', () => {
             candidates: 4,
             rental: 1,
             notRental: 1,
+            removed: 0,
             upserted: 1,
             invalid: 2,
             failures: [
@@ -72,6 +74,16 @@ describe('runMonthlyImport', () => {
         expect(store.judgments.get(RENTAL_JID)?.jdate).toBe('2022-05-10');
         expect(cleanup).toHaveBeenCalledTimes(1);
         expect(deps.onMonthDone).toHaveBeenCalledWith(summary);
+    });
+
+    it('should skip judgments that the Judicial Yuan has removed', async () => {
+        const store = createInMemoryJudgmentStore();
+        const { deps } = createDeps({ store, isRemoved: (id) => id === RENTAL_JID });
+
+        const [summary] = await runMonthlyImport(['202212'], deps, { dryRun: false });
+
+        expect(summary).toMatchObject({ rental: 0, removed: 1, upserted: 0 });
+        expect(store.judgments.has(RENTAL_JID)).toBe(false);
     });
 
     it('should upsert in batches', async () => {

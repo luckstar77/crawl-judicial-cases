@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runDeleteInforSync } from './delete-infor-sync';
+import { loadRemovedJudgmentMatcher, runDeleteInforSync } from './delete-infor-sync';
 import { createInMemoryJudgmentStore } from './testing/in-memory-judgment-store';
 
 const STORED = 'NTDV,93,繼,9019,20040115,1';
@@ -70,5 +70,19 @@ describe('runDeleteInforSync', () => {
         );
 
         await expect(run).rejects.toThrow('解析不到任何裁判 ID');
+    });
+});
+
+describe('loadRemovedJudgmentMatcher', () => {
+    it('should match ids on the list, including ids missing the check number', async () => {
+        const isRemoved = await loadRemovedJudgmentMatcher(source());
+
+        expect(isRemoved(STORED)).toBe(true);
+        expect(isRemoved('TPSM,93,台上,9326,20040116,1')).toBe(true);
+        expect(isRemoved('TPEV,111,北簡,1,20220510,1')).toBe(false);
+    });
+
+    it('should fail loudly when the list cannot be parsed', async () => {
+        await expect(loadRemovedJudgmentMatcher(source('<html></html>'))).rejects.toThrow('解析不到任何裁判 ID');
     });
 });

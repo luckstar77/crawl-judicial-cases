@@ -13,6 +13,21 @@ const COMMENT_TABLE = 'comments';
 const LIKE_TABLE = 'likes';
 
 export const UPSERT_BATCH_SIZE = 200;
+// 衝突時更新的欄位：不含主鍵 id（避免改寫既有 id 而觸發外鍵錯誤），也不含 district
+export const UPSERT_MERGE_COLUMNS: (keyof JudgmentRecord)[] = [
+    'jyear',
+    'jcase',
+    'jno',
+    'jdate',
+    'jtitle',
+    'jfull',
+    'jpdf',
+    'plaintiff',
+    'defendant',
+    'rent',
+    'city',
+    'win',
+];
 export const QUERY_BATCH_SIZE = 500;
 
 const uniqueIds = (ids: string[]): string[] => [...new Set(ids)];
@@ -20,7 +35,7 @@ const uniqueIds = (ids: string[]): string[] => [...new Set(ids)];
 export const createKnexJudgmentStore = (client: Knex): JudgmentStore => ({
     upsert: async (records: JudgmentRecord[]) => {
         for (const batch of chunk(records, UPSERT_BATCH_SIZE)) {
-            await client(JUDGMENT_TABLE).insert(batch).onConflict('id').merge();
+            await client(JUDGMENT_TABLE).insert(batch).onConflict('id').merge(UPSERT_MERGE_COLUMNS);
         }
         return records.length;
     },

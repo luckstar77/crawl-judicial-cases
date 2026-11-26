@@ -3,7 +3,7 @@ import { knex, Knex } from 'knex';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildJudgmentRecord } from '../judicial/judgment-record';
 import { rentalRaw } from '../sync/testing/fixtures';
-import { createKnexJudgmentStore } from './knex-judgment-store';
+import { createKnexJudgmentStore, UPSERT_MERGE_COLUMNS } from './knex-judgment-store';
 
 const jid = (no: number) => `TPEV,111,北簡,${no},20220510,1`;
 const record = (no: number, title = '遷讓房屋') =>
@@ -62,6 +62,12 @@ describe('createKnexJudgmentStore', () => {
             { id: jid(1), jtitle: '新案由', district: '中正區', rent: 1000 },
             { id: jid(2), jtitle: '遷讓房屋', district: null, rent: 1000 },
         ]);
+    });
+
+    it('should update every record column except the primary key on conflict', () => {
+        const recordColumns = Object.keys(record(1)).filter((column) => column !== 'id');
+
+        expect([...UPSERT_MERGE_COLUMNS].sort()).toEqual(recordColumns.sort());
     });
 
     it('should upsert more than one batch', async () => {

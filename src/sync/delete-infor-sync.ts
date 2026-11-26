@@ -1,5 +1,5 @@
 // Delete-Infor 刪除清單：司法院已移除的裁判書，若存在於資料庫必須刪除（連同留言、按讚）。
-import { parseDeleteInforCsv } from '../judicial/delete-infor-csv';
+import { createRemovedJudgmentMatcher, DeleteInforRecord, parseDeleteInforCsv } from '../judicial/delete-infor-csv';
 import { JudgmentStore } from './judgment-store';
 
 export interface DeleteInforSource {
@@ -30,16 +30,26 @@ export interface DeleteInforSyncSummary {
     deletedLikes: number;
 }
 
+const parseSource = (source: DeleteInforSource): { records: DeleteInforRecord[]; invalidRows: number } => {
+    const parsed = parseDeleteInforCsv(source.csv);
+    if (parsed.records.length === 0) {
+        // 清單一向有數千筆，解析不到任何一筆代表格式改變，不能當成「沒有要刪除的判決」
+        throw new Error(`Delete-Infor 清單（fileSetId ${source.fileSetId}）解析不到任何裁判 ID，格式可能已改變`);
+    }
+    return parsed;
+};
+
+/** 每月匯入用：下載清單並回傳判斷裁判書是否已撤下的函式 */
+export const loadRemovedJudgmentMatcher = async (
+    loadCsv: () => Promise<DeleteInforSource>
+): Promise<(id: string) => boolean> => createRemovedJudgmentMatcher(parseSource(await loadCsv()).records);
+
 export const runDeleteInforSync = async (
     deps: DeleteInforSyncDeps,
     options: { dryRun: boolean }
 ): Promise<DeleteInforSyncSummary> => {
     const source = await deps.loadCsv();
-    const { records, invalidRows } = parseDeleteInforCsv(source.csv);
-    if (records.length === 0) {
-        // 清單一向有數千筆，解析不到任何一筆代表格式改變，不能當成「沒有要刪除的判決」
-        throw new Error(`Delete-Infor 清單（fileSetId ${source.fileSetId}）解析不到任何裁判 ID，格式可能已改變`);
-    }
+    const { records, invalidRows } = parseSource(source);
     const uniqueIds = [...new Set(records.map(({ jid }) => jid))];
     const presentIds = [...(await deps.store.findExistingIds(uniqueIds))].sort();
 

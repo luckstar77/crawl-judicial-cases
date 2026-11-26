@@ -10,13 +10,14 @@ import { createKnexJudgmentStore } from '../db/knex-judgment-store';
 import { buildMysqlConfig } from '../db/mysql-config';
 import { createAxiosHttpClient, sleep } from '../judicial/http';
 import { createJudgmentApi } from '../judicial/judgment-api';
-import { hasFlag, parseDelayMs, readOption } from '../sync/cli-options';
+import { assertKnownArgs, hasFlag, parseDelayMs, readOption } from '../sync/cli-options';
 import { runDailySync } from '../sync/daily-sync';
 import { formatTaipeiTime, isWithinServiceWindow } from '../sync/service-window';
 import { requireEnv } from '../sync/require-env';
 
 (async () => {
     const argv = process.argv.slice(2);
+    assertKnownArgs(argv, { flags: ['dry-run'], options: ['delay-ms'] });
     const now = new Date();
     if (!isWithinServiceWindow(now)) {
         console.log(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DELAY_MS, hasFlag, monthRange, parseDelayMs, parseMonths, readOption } from './cli-options';
+import { assertKnownArgs, DEFAULT_DELAY_MS, hasFlag, monthRange, parseDelayMs, parseMonths, readOption } from './cli-options';
 import { requireEnv } from './require-env';
 import { formatTaipeiTime, isWithinServiceWindow, taipeiHour } from './service-window';
 
@@ -12,6 +12,22 @@ describe('hasFlag / readOption', () => {
         expect(readOption(argv, 'delay-ms')).toBe('500');
         expect(readOption(argv, 'month')).toBeUndefined();
     });
+});
+
+describe('assertKnownArgs', () => {
+    const spec = { flags: ['dry-run'], options: ['delay-ms'] };
+
+    it('should accept known flags and options', () => {
+        expect(() => assertKnownArgs(['--dry-run', '--delay-ms=500'], spec)).not.toThrow();
+        expect(() => assertKnownArgs([], spec)).not.toThrow();
+    });
+
+    it.each(['--dryrun', '--dry-run=true', '--delay-ms', 'dry-run', '--apply'])(
+        'should reject %s so a typo never turns a dry run into a real run',
+        (arg) => {
+            expect(() => assertKnownArgs([arg], spec)).toThrow(`未知的參數：${arg}`);
+        }
+    );
 });
 
 describe('parseDelayMs', () => {
@@ -40,6 +56,8 @@ describe('monthRange', () => {
         expect(() => monthRange('202302', '202211')).toThrow('--from 不可晚於 --to');
         expect(() => monthRange('202213', '202301')).toThrow('--from');
         expect(() => monthRange('202201', '2023-01')).toThrow('--to');
+        expect(() => monthRange('000001', '000012')).toThrow('--from');
+        expect(() => monthRange('202201', '210001')).toThrow('--to');
     });
 });
 

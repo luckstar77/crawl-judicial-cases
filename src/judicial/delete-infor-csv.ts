@@ -69,6 +69,10 @@ export const parseCsvRows = (text: string): string[][] => {
             field += char;
         }
     }
+    if (inQuotes) {
+        // 少了結尾的雙引號會把之後整份清單併成一個欄位，只刪到一部分卻不報錯
+        throw new Error('CSV 有未結束的雙引號，清單可能不完整');
+    }
     if (field !== '' || row.length > 0) {
         endRow();
     }
@@ -101,4 +105,14 @@ export const parseDeleteInforCsv = (text: string): DeleteInforParseResult => {
         records.push({ deletedDate, judgmentYearMonth, courtName, jid, isComplete: COMPLETE_JID.test(jid) });
     }
     return { records, invalidRows };
+};
+
+/**
+ * 判斷裁判書是否已被司法院撤下：完整 ID 直接比對；
+ * 缺少檢查單號的 ID（例如 "TPSM,93,台上,9326,20040116"）比對開頭相同的 ID。
+ */
+export const createRemovedJudgmentMatcher = (records: DeleteInforRecord[]): ((id: string) => boolean) => {
+    const completeIds = new Set(records.filter(({ isComplete }) => isComplete).map(({ jid }) => jid));
+    const incompletePrefixes = records.filter(({ isComplete }) => !isComplete).map(({ jid }) => `${jid},`);
+    return (id) => completeIds.has(id) || incompletePrefixes.some((prefix) => id.startsWith(prefix));
 };

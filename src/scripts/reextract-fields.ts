@@ -12,6 +12,7 @@ dotenv.config();
 import * as fs from 'fs';
 import * as knex from '../db/knex';
 import { buildMysqlConfig } from '../db/mysql-config';
+import { assertKnownArgs, hasFlag, readOption } from '../sync/cli-options';
 import { chunk } from '../reclassify/reclassify';
 import { diffFields, FieldChange, sampleChanges, StoredJudgment, summarizeChanges } from '../reextract/reextract';
 
@@ -19,16 +20,14 @@ const READ_BATCH_SIZE = 500;
 const UPDATE_BATCH_SIZE = 200;
 const DEFAULT_OUTPUT = 'reextract-report.json';
 
-const readOption = (name: string): string | undefined =>
-    process.argv
-        .find((arg) => arg.startsWith(`--${name}=`))
-        ?.slice(name.length + 3);
 
 const isFieldChange = (change: FieldChange | undefined): change is FieldChange => change !== undefined;
 
 (async () => {
-    const shouldApply = process.argv.includes('--apply');
-    const outputPath = readOption('output') ?? DEFAULT_OUTPUT;
+    const argv = process.argv.slice(2);
+    assertKnownArgs(argv, { flags: ['apply'], options: ['output'] });
+    const shouldApply = hasFlag(argv, 'apply');
+    const outputPath = readOption(argv, 'output') ?? DEFAULT_OUTPUT;
     const client = await knex.init(buildMysqlConfig(process.env));
 
     try {
@@ -78,6 +77,7 @@ const isFieldChange = (change: FieldChange | undefined): change is FieldChange =
         await client.destroy();
     }
 })().catch((error) => {
-    console.error(error);
+    // 只印名稱與訊息：完整的錯誤物件可能帶有連線設定
+    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
     process.exit(1);
 });
