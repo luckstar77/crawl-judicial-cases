@@ -4,6 +4,7 @@ import { getClient as mongodbGetClient } from '../db/mongodb';
 import * as knex from '../db/knex';
 
 import getUpdateData from './getUpdateData';
+import { classifyRentalDispute } from '../classifier/rental-dispute-classifier';
 
 export default async () => {
     const knexClient = await knex.getClient();
@@ -19,6 +20,14 @@ export default async () => {
         // 正規化鍵名（Mongo 來源常為大寫，如 JID/JFULL）
         const lowerKeyFileset: any = keysToLowerCase(judicialFileset);
         const { jid: id, jfull, jtitle, ...fileset } = lowerKeyFileset;
+
+        // MongoDB 內可能有舊規則收進來的非租屋案件，同步前再檢查一次
+        const classification = classifyRentalDispute({
+            JID: id,
+            JTITLE: jtitle,
+            JFULL: jfull,
+        });
+        if (!classification.isRentalDispute) continue;
 
         const updateData: any = getUpdateData({ id, jfull, jtitle });
         // if (updateData) {

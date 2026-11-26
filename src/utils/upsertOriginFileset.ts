@@ -8,6 +8,7 @@ import * as mysql from 'mysql2/promise';
 import * as unrar from 'node-unrar-js';
 
 import * as knex from '../db/knex';
+import { classifyRentalDispute } from '../classifier/rental-dispute-classifier';
 import getMemberTokens from './getMemberTokens';
 
 import { getClient as mongodbGetClient } from '../db/mongodb';
@@ -109,7 +110,8 @@ async function extractFiles(filePath: string, destFolder: string) {
 }
 
 /**
- * 過濾不需要的法院／層級（如：最高法院、高等法院、商業法院…）。
+ * 依檔案路徑（法院資料夾、裁判字號）先略過明顯不需要的法院與程序，減少寫檔；
+ * 是否為房屋租賃糾紛仍由 classifyRentalDispute 判斷。
  */
 function shouldSkipFile(filename: string): boolean {
     const keywords = [
@@ -137,73 +139,18 @@ function shouldSkipFile(filename: string): boolean {
 }
 
 /**
- * 解析每筆案件 JSON，依標題／全文規則過濾。
- * 若非租賃相關案件則直接返回。
- * 註：目前回傳布林值未被呼叫端使用。
+ * 解析每筆案件 JSON，只保留房屋租賃糾紛（規則見 classifier/rental-dispute-rules.ts）。
  */
 const parseJsonFile = async (filePath: string): Promise<void> => {
     const jsonData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-    if (shouldSkipFileByFullAndTitle(jsonData)) return;
+    if (!classifyRentalDispute(jsonData).isRentalDispute) return;
 
     // 上傳案件到 mysql 裡
     // await upsertFilesetIntoMysql(jsonData);
 
     await upsertFilesetIntoMongoDB(jsonData);
 };
-
-function shouldSkipFileByFullAndTitle(jsonData: any) {
-    // 檢查 jsonData.JTITLE 不包含指定字串（排除非目標案件類型）
-    const excludedTitles = [
-        '債務人異議之訴',
-        '確認本票債權不存在',
-        '第三人異議之訴',
-        '返還借款',
-        '拆屋還地',
-        '侵占',
-        '業務過失致死',
-        '給付償金',
-        '確認特留分等',
-        '返還土地',
-        '違反貪污治罪條例',
-        '詐欺',
-        '清算事件',
-        '清償債務',
-        '租佃爭議',
-        '清償借款',
-        '給付管理費',
-        '排除侵害',
-        '分割共有物',
-        '所有權移轉登記',
-        '分割遺產',
-        '履行契約',
-        '賭博',
-        '返還租賃物',
-        '妨害風化',
-        '調整租金',
-        '',
-    ];
-
-    const isValidTitle = excludedTitles.every(
-        (excludedTitle) => !jsonData.JTITLE.includes(excludedTitle)
-    );
-    if (!isValidTitle) {
-        return true;
-    }
-
-    // 檢查 jsonData.JFULL 包含指定字串（必須含關鍵詞）
-    const requiredSubstrings = ['租金', '房屋'];
-    const isValidFull = requiredSubstrings.every((substring) =>
-        jsonData.JFULL.includes(substring)
-    );
-
-    // 如果以上条件没有达成，则返回
-    if (!isValidFull) {
-        return true;
-    }
-
-    return false;
-}
 
 /**
  * 將原始案件資料 upsert 進 MongoDB 的 `judicialFileset` 集合。
@@ -251,31 +198,28 @@ async function upsertFilesetIntoMongoDB(jsonData: any) {
 async function upsertFilesetIntoMysql(jsonData: any) {
     const knexClient = await knex.getClient();
 
-    try {
-        const { JID, JYEAR, JCASE, JNO, JDATE, JTITLE, JFULL, JPDF } = jsonData;
-        const convertJDATE = convertDateStr(JDATE);
-        const upsertData = {
-            JID,
-            JYEAR,
-            JCASE,
-            JNO,
-            JDATE: convertJDATE,
-            JTITLE,
-            JFULL,
-            JPDF,
-        };
-        if (UPSERT) {
-            const result = await knexClient('judicialOriginFileset')
-                .insert(upsertData)
-                .onConflict('JID')
-                .merge();
-        } else {
-            const result = await knexClient('judicialOriginFileset')
-                .insert(upsertData)
-                .onConflict('JID')
-                .ignore();
-        }
-    } finally {
+    const { JID, JYEAR, JCASE, JNO, JDATE, JTITLE, JFULL, JPDF } = jsonData;
+    const convertJDATE = convertDateStr(JDATE);
+    const upsertData = {
+        JID,
+        JYEAR,
+        JCASE,
+        JNO,
+        JDATE: convertJDATE,
+        JTITLE,
+        JFULL,
+        JPDF,
+    };
+    if (UPSERT) {
+        const result = await knexClient('judicialOriginFileset')
+            .insert(upsertData)
+            .onConflict('JID')
+            .merge();
+    } else {
+        const result = await knexClient('judicialOriginFileset')
+            .insert(upsertData)
+            .onConflict('JID')
+            .ignore();
     }
 }
 
