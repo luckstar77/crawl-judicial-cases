@@ -4,8 +4,11 @@
     "description": "抓取判決書的資料，上傳到資料庫。",
     "main": "index.js",
     "scripts": {
-        "start": "ts-node src/index.ts",
         "reclassify": "ts-node src/scripts/reclassify-judgments.ts",
+        "reextract": "ts-node src/scripts/reextract-fields.ts",
+        "sync:daily": "ts-node src/scripts/sync-daily.ts",
+        "sync:delete-infor": "ts-node src/scripts/sync-delete-infor.ts",
+        "sync:monthly": "ts-node src/scripts/sync-monthly.ts",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
         "typecheck": "tsc --noEmit -p .",
@@ -29,7 +32,6 @@
         "axios": "^0.27.2",
         "dotenv": "^16.0.3",
         "knex": "^2.3.0",
-        "mongodb": "^5.2.0",
         "mysql2": "^2.3.3",
         "node-unrar-js": "^2.0.0",
         "parse-chinese-number": "^1.0.5"
@@ -39,6 +41,7 @@
         "@typescript-eslint/eslint-plugin": "^5.39.0",
         "@typescript-eslint/parser": "^5.45.1",
         "@vitest/coverage-v8": "^3.2.7",
+        "better-sqlite3": "^11.10.0",
         "eslint": "^8.29.0",
         "prettier": "^2.8.0",
         "ts-node": "^10.9.1",

@@ -5,9 +5,20 @@ export default defineConfig({
         include: ['src/**/*.test.ts'],
         coverage: {
             provider: 'v8',
-            // 只量測有單元測試的純邏輯；下載、解壓、資料庫存取等 I/O 流程不在範圍內
-            include: ['src/classifier/**/*.ts', 'src/reclassify/**/*.ts', 'src/db/mysql-config.ts'],
-            exclude: ['src/**/*.test.ts'],
+            // 量測有單元測試的模組；連接資料庫與 API 的腳本（src/scripts）不在範圍內
+            include: [
+                'src/classifier/**/*.ts',
+                'src/reclassify/**/*.ts',
+                'src/reextract/**/*.ts',
+                'src/judgment/**/*.ts',
+                'src/db/mysql-config.ts',
+                'src/db/knex-judgment-store.ts',
+                'src/judicial/**/*.ts',
+                'src/sync/**/*.ts',
+                'src/utils/**/*.ts',
+            ],
+            // 測試用的記憶體 store 與資料不列入；readArchiveDocuments 需要真實 RAR，以實際月份檔案手動驗證
+            exclude: ['src/**/*.test.ts', 'src/sync/testing/**'],
             thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 },
         },
     },

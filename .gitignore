@@ -4,3 +4,7 @@ build
 .env
 coverage
 reclassify-report*.json
+reextract-report*.json
+
+# 同步工作的 cron 日誌（README 建議的路徑）
+logs/
