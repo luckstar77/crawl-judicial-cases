@@ -21,6 +21,16 @@ const party = (role: string, name: string): string =>
     `${role.split('').join(SPACE.repeat(3))}${SPACE}${name}`;
 
 describe('extractParties', () => {
+    it('should cut a long name by characters without splitting a surrogate pair', () => {
+        const rareCharacter = String.fromCodePoint(0x20000);
+        const longName = `${'王'.repeat(49)}${rareCharacter.repeat(2)}`;
+
+        const { plaintiff } = extractParties(header(party('原告', longName), party('被告', '黃小美')));
+
+        expect(Array.from(plaintiff ?? '')).toHaveLength(50);
+        expect(plaintiff?.endsWith(rareCharacter)).toBe(true);
+    });
+
     it('should read the plaintiff and the defendant from the party lines', () => {
         const text = header(party('原告', '林大同'), party('被告', '黃小美'));
 
@@ -128,6 +138,13 @@ describe('extractParties', () => {
 describe('extractWinningParty', () => {
     const judgmentWith = (mainText: string, reasons = '原告主張：被告積欠租金。'): string =>
         `${header(party('原告', '林大同'), party('被告', '黃小美'))}\n    主      文\n${mainText}\n    事實及理由\n${reasons}`;
+
+    it.each(['本件移送臺灣新北地方法院。', '本件訴訟因和解而終結。'])(
+        'should not decide a winner when the case ends without a ruling on the claim: %s',
+        (mainText) => {
+            expect(extractWinningParty(judgmentWith(mainText))).toBeUndefined();
+        }
+    );
 
     it('should find a plaintiff win when the defendant is ordered to act', () => {
         expect(extractWinningParty(judgmentWith('被告應將系爭房屋遷讓返還原告。\n訴訟費用由被告負擔。'))).toBe(
@@ -248,6 +265,10 @@ describe('extractWinningParty', () => {
 });
 
 describe('extractMonthlyRent', () => {
+    it.each(['數', '幾', '多'])('should ignore arrears over %s months', (count) => {
+        expect(extractMonthlyRent(`被告積欠${count}月租金9萬元`)).toBeUndefined();
+    });
+
     it.each([
         ['兩造約定每月租金新臺幣（下同）1萬5,000元。', 15000],
         ['租金每月15,000元，押金3萬元。', 15000],
@@ -339,5 +360,26 @@ describe('extractJudgmentFields', () => {
 
     it('should read the city from the text when no judgment id is given', () => {
         expect(extractJudgmentFields(header()).city).toBe('桃園');
+    });
+});
+
+describe('extractJudgmentFields on adversarial input', () => {
+    const LENGTH = 200000;
+    const MAX_MILLISECONDS = 1000;
+    const JID = 'TPEV,115,北簡,1,20260101,1';
+
+    it.each([
+        ['digits after the rent label', `每月租金${'1'.repeat(LENGTH)}`],
+        ['a number table after the rent label', `每月租金\n${' 12,000\n'.repeat(LENGTH / 8)}`],
+        ['units after the rent label', `每月租金${'萬'.repeat(LENGTH)}`],
+        ['digits in the court costs', `主文\n訴訟費用${'1'.repeat(LENGTH)}由原告負擔`],
+        ['repeated rent labels with digits', '每月租金1'.repeat(LENGTH / 5)],
+    ])('should finish %s within a second', (_, text) => {
+        const start = performance.now();
+
+        const fields = extractJudgmentFields(text, JID);
+
+        expect(performance.now() - start).toBeLessThan(MAX_MILLISECONDS);
+        expect(fields.rent).toBeUndefined();
     });
 });

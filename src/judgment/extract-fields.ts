@@ -23,7 +23,11 @@ interface Parties {
 // ---------------------------------------------------------------------------
 
 const NUMERAL = '0-9.零〇一二三四五六七八九十百千萬壹貳參叁肆伍陸柒捌玖拾佰仟兩';
-const AMOUNT = `([${NUMERAL}]*[0-9零〇一二三四五六七八九十壹貳參叁肆伍陸柒捌玖拾兩][${NUMERAL}]*)元`;
+// 金額至少要有一個數字，不能只有「萬」「千」或小數點
+const AMOUNT_DIGIT = '0-9零〇一二三四五六七八九十壹貳參叁肆伍陸柒捌玖拾兩';
+// 金額只從一串數字的開頭比對，並先以前瞻取得整串數字再接「元」。
+// 後面沒有「元」時不會逐字回溯，長串數字（例如表格）也只花線性時間。
+const AMOUNT = `(?<![${NUMERAL}])(?=[${NUMERAL}]*[${AMOUNT_DIGIT}])(?=(?<amount>[${NUMERAL}]+))\\k<amount>元`;
 const TEN_THOUSAND = 10000;
 
 const FULL_WIDTH_DIGIT = /[０-９]/g;
@@ -99,7 +103,8 @@ const toPartyName = (rest: string): string | undefined => {
     if (!name || NAME_PUNCTUATION.test(name) || NOT_A_PARTY.test(name)) {
         return undefined;
     }
-    return name.slice(0, MAX_NAME_LENGTH);
+    // 以字元而非 UTF-16 單位截斷，避免切斷罕用字的代理對
+    return Array.from(name).slice(0, MAX_NAME_LENGTH).join('');
 };
 
 const nameOnNextLine = (nextLine: string | undefined): string | undefined => {
@@ -172,6 +177,8 @@ const CLAIM_PARTLY_DISMISSED = /^(?:本訴)?原告其餘(?:之訴|請求)[^。]*
 const NOT_RELIEF = /駁回|訴訟費用|假執行|供擔保/;
 // 命被告遷讓或返還房屋：房東的主要請求成立，即使金錢請求只准了一小部分
 const EVICTION_ORDER = /遷讓|遷出|騰空|(?:房屋|建物|房地|土地)[^。]{0,30}?(?:返還|交還)/;
+// 「本件移送臺灣新北地方法院」「本件訴訟因和解而終結」沒有判斷原告的請求
+const PROCEDURAL_ORDER = /^本件[^。]{0,40}?(?:移送|終結|停止|和解|撤回)/;
 const COUNTERCLAIM = /反訴/;
 const COUNTERCLAIM_EXCEPTION = /^本訴/;
 
@@ -214,7 +221,8 @@ const toSentences = (mainText: string): string[] => {
     );
 };
 
-const isGrantedRelief = (sentence: string): boolean => !NOT_RELIEF.test(sentence) && !ORDER_ON_PLAINTIFF.test(sentence);
+const isGrantedRelief = (sentence: string): boolean =>
+    !NOT_RELIEF.test(sentence) && !ORDER_ON_PLAINTIFF.test(sentence) && !PROCEDURAL_ORDER.test(sentence);
 
 const parseFraction = (text: string): number | undefined => {
     const percent = PERCENT.exec(text);
@@ -315,10 +323,10 @@ const DAY_OF_MONTH = '[0-9一二三四五六七八九十]{1,3}日(?:以?前)?';
 
 // 依可信度排序的租金寫法；同一層找不到合理金額才看下一層
 const RENT_PATTERNS: RegExp[][] = [
-    // 兩造約定的每月租金。「積欠3個月租金共9萬元」是欠款總額，不是月租
+    // 兩造約定的每月租金。「積欠3個月租金共9萬元」「積欠數月租金」是欠款總額，不是月租
     [
         new RegExp(
-            `(?:每個?月租金|(?<![0-9零〇一二三四五六七八九十兩個])月租金?|租金(?:為|係|是)?(?:每個?月|按月))${FILLER}${AMOUNT}`,
+            `(?:每個?月租金|(?<![0-9零〇一二三四五六七八九十兩個數幾多])月租金?|租金(?:為|係|是)?(?:每個?月|按月))${FILLER}${AMOUNT}`,
             'g'
         ),
         new RegExp(`每個?月${DAY_OF_MONTH}(?:繳付|給付|支付|繳納|交付)租金${FILLER}${AMOUNT}`, 'g'),
