@@ -27,19 +27,32 @@ const COMPLETE_JID = /^[A-Z]+,[^,]+,[^,]+,[^,]+,\d{8},[^,]+$/;
 /** 至少要有法院別到號次，否則無法對應任何判決 */
 const MINIMAL_JID = /^[A-Z]+,[^,]+,[^,]+,[^,]+/;
 
-/** RFC 4180：欄位可用雙引號包住，內含逗號、換行，雙引號以 "" 表示 */
+const MALFORMED_QUOTE = 'CSV 的雙引號位置不正確，清單可能不完整';
+
+/**
+ * RFC 4180：欄位可用雙引號包住，內含逗號、換行，雙引號以 "" 表示。
+ * 雙引號只能出現在欄位開頭、結尾或以 "" 跳脫；位置不對時整份清單可能錯位，因此直接丟出錯誤，
+ * 不能只刪到一部分卻不報錯。
+ */
 export const parseCsvRows = (text: string): string[][] => {
     const rows: string[][] = [];
     let row: string[] = [];
     let field = '';
     let inQuotes = false;
+    let atFieldStart = true;
+    let afterClosingQuote = false;
     const source = text.startsWith(BOM) ? text.slice(BOM.length) : text;
 
-    const endRow = () => {
+    const endField = () => {
         row.push(field);
+        field = '';
+        atFieldStart = true;
+        afterClosingQuote = false;
+    };
+    const endRow = () => {
+        endField();
         rows.push(row);
         row = [];
-        field = '';
     };
 
     for (let index = 0; index < source.length; index += 1) {
@@ -52,28 +65,36 @@ export const parseCsvRows = (text: string): string[][] => {
                 index += 1;
             } else {
                 inQuotes = false;
+                afterClosingQuote = true;
             }
             continue;
         }
-        if (char === '"') {
-            inQuotes = true;
-        } else if (char === ',') {
-            row.push(field);
-            field = '';
-        } else if (char === '\r' || char === '\n') {
+        if (char === ',') {
+            endField();
+            continue;
+        }
+        if (char === '\r' || char === '\n') {
             if (char === '\r' && source[index + 1] === '\n') {
                 index += 1;
             }
             endRow();
+            continue;
+        }
+        if (afterClosingQuote || (char === '"' && !atFieldStart)) {
+            throw new Error(MALFORMED_QUOTE);
+        }
+        atFieldStart = false;
+        if (char === '"') {
+            inQuotes = true;
         } else {
             field += char;
         }
     }
     if (inQuotes) {
-        // 少了結尾的雙引號會把之後整份清單併成一個欄位，只刪到一部分卻不報錯
-        throw new Error('CSV 有未結束的雙引號，清單可能不完整');
+        // 少了結尾的雙引號會把之後整份清單併成一個欄位
+        throw new Error(`${MALFORMED_QUOTE}（有未結束的雙引號）`);
     }
-    if (field !== '' || row.length > 0) {
+    if (field !== '' || row.length > 0 || afterClosingQuote) {
         endRow();
     }
     return rows;
@@ -107,12 +128,15 @@ export const parseDeleteInforCsv = (text: string): DeleteInforParseResult => {
     return { records, invalidRows };
 };
 
+/** 只缺檢查單號、其餘五段齊全的 ID，例如 "TPSM,93,台上,9326,20040116" */
+const MISSING_CHECK_NUMBER = /^[A-Z]+,[^,]+,[^,]+,[^,]+,\d{8}$/;
+
 /**
- * 判斷裁判書是否已被司法院撤下：完整 ID 直接比對；
- * 缺少檢查單號的 ID（例如 "TPSM,93,台上,9326,20040116"）比對開頭相同的 ID。
+ * 判斷裁判書是否已被司法院撤下：清單上的 ID 一律比對完全相同的 JID；
+ * 只缺檢查單號的 ID 另外比對開頭相同的 JID。少於五段的 ID 不放寬，避免比中同字號其他日期的判決。
  */
 export const createRemovedJudgmentMatcher = (records: DeleteInforRecord[]): ((id: string) => boolean) => {
-    const completeIds = new Set(records.filter(({ isComplete }) => isComplete).map(({ jid }) => jid));
-    const incompletePrefixes = records.filter(({ isComplete }) => !isComplete).map(({ jid }) => `${jid},`);
-    return (id) => completeIds.has(id) || incompletePrefixes.some((prefix) => id.startsWith(prefix));
+    const listedIds = new Set(records.map(({ jid }) => jid));
+    const prefixes = records.filter(({ jid }) => MISSING_CHECK_NUMBER.test(jid)).map(({ jid }) => `${jid},`);
+    return (id) => listedIds.has(id) || prefixes.some((prefix) => id.startsWith(prefix));
 };

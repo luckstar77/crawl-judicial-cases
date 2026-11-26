@@ -34,6 +34,13 @@ describe('parseCsvRows', () => {
         expect(() => parseCsvRows('a,b,c,"TPDV,1,訴,1,20200101,1\n1,2,3,"TPDV,1,訴,2,20200101,1"')).toThrow('雙引號');
     });
 
+    it.each([
+        ['a quote inside an unquoted field', 'ab"c,1\n2,3\nde"f,4'],
+        ['text after a closing quote', '"ab"c,1'],
+    ])('should reject %s', (_, text) => {
+        expect(() => parseCsvRows(text)).toThrow('雙引號');
+    });
+
     it('should strip the UTF-8 BOM and keep empty trailing fields', () => {
         expect(parseCsvRows('\uFEFFa,\n')).toEqual([['a', '']]);
     });
@@ -115,5 +122,18 @@ describe('createRemovedJudgmentMatcher', () => {
         expect(isRemoved('PTDM,93,訴,9017,20040107,2')).toBe(false);
         expect(isRemoved('TPSM,93,台上,9326,20040116,1')).toBe(true);
         expect(isRemoved('TPSM,93,台上,93260,20040116,1')).toBe(false);
+    });
+
+    it('should match an incomplete id exactly and never widen a four-part id to other dates', () => {
+        const rows =
+            '20210101,200401,臺北簡易庭民事,"TPEV,93,北簡,1,2004011,1"\r\n' +
+            '20210101,200401,最高法院刑事,"TPSM,93,台上,9326"\r\n';
+        const { records } = parseDeleteInforCsv(SAMPLE + rows);
+
+        const isRemoved = createRemovedJudgmentMatcher(records);
+
+        expect(isRemoved('TPEV,93,北簡,1,2004011,1')).toBe(true);
+        expect(isRemoved('TPSM,93,台上,9326')).toBe(true);
+        expect(isRemoved('TPSM,93,台上,9326,20050101,2')).toBe(false);
     });
 });

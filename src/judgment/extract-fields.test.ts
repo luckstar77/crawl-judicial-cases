@@ -37,6 +37,13 @@ describe('extractParties', () => {
         expect(extractParties(text)).toEqual({ plaintiff: '林大同', defendant: '黃小美' });
     });
 
+    it('should join a spaced-out name that starts with a rare character', () => {
+        const rareCharacter = String.fromCodePoint(0x2000b);
+        const text = header(party('原告', `${rareCharacter} ○ ○`), party('被告', '黃小美'));
+
+        expect(extractParties(text).plaintiff).toBe(`${rareCharacter}○○`);
+    });
+
     it('should skip agents and read the first party of each side', () => {
         const text = header(
             party('原告', '範例物業股份有限公司'),
@@ -139,12 +146,25 @@ describe('extractWinningParty', () => {
     const judgmentWith = (mainText: string, reasons = '原告主張：被告積欠租金。'): string =>
         `${header(party('原告', '林大同'), party('被告', '黃小美'))}\n    主      文\n${mainText}\n    事實及理由\n${reasons}`;
 
-    it.each(['本件移送臺灣新北地方法院。', '本件訴訟因和解而終結。'])(
+    it.each([
+        '本件移送臺灣新北地方法院。',
+        '本件訴訟因和解而終結。',
+        '本件訴訟因原告撤回起訴而終結，訴訟費用由原告負擔。',
+        '本件移送臺灣新北地方法院。\n訴訟費用由被告負擔。',
+        '本件應停止訴訟程序。',
+    ])(
         'should not decide a winner when the case ends without a ruling on the claim: %s',
         (mainText) => {
             expect(extractWinningParty(judgmentWith(mainText))).toBeUndefined();
         }
     );
+
+    it.each([
+        '本件被告應給付原告新臺幣三萬元，並應停止使用系爭停車位。',
+        '本件被告應將門牌號碼和解路1號房屋遷讓返還原告。',
+    ])('should still find a plaintiff win when an order mentions a procedural word: %s', (mainText) => {
+        expect(extractWinningParty(judgmentWith(mainText))).toBe('plaintiff');
+    });
 
     it('should find a plaintiff win when the defendant is ordered to act', () => {
         expect(extractWinningParty(judgmentWith('被告應將系爭房屋遷讓返還原告。\n訴訟費用由被告負擔。'))).toBe(

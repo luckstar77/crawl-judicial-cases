@@ -95,7 +95,8 @@ const MAX_NAME_LENGTH = 50;
  */
 const toPartyName = (rest: string): string | undefined => {
     const tokens = rest.trim().split(/\s+/);
-    const joined = tokens[0]?.length === 1 ? tokens.join('') : (tokens[0] ?? '');
+    const firstToken = tokens[0] ?? '';
+    const joined = Array.from(firstToken).length === 1 ? tokens.join('') : firstToken;
     const noteIndex = joined.search(NAME_NOTE_START);
     const withoutNote = noteIndex >= 0 ? joined.slice(0, noteIndex) : joined;
     const addressIndex = withoutNote.search(ADDRESS_START);
@@ -177,8 +178,10 @@ const CLAIM_PARTLY_DISMISSED = /^(?:本訴)?原告其餘(?:之訴|請求)[^。]*
 const NOT_RELIEF = /駁回|訴訟費用|假執行|供擔保/;
 // 命被告遷讓或返還房屋：房東的主要請求成立，即使金錢請求只准了一小部分
 const EVICTION_ORDER = /遷讓|遷出|騰空|(?:房屋|建物|房地|土地)[^。]{0,30}?(?:返還|交還)/;
-// 「本件移送臺灣新北地方法院」「本件訴訟因和解而終結」沒有判斷原告的請求
-const PROCEDURAL_ORDER = /^本件[^。]{0,40}?(?:移送|終結|停止|和解|撤回)/;
+// 「本件移送臺灣新北地方法院」「本件訴訟因和解而終結」「本件訴訟因原告撤回起訴而終結」沒有判斷原告的請求。
+// 只認完整的句型（到句末或逗號為止，且不含「應」），「本件被告應…停止使用…」仍是准許原告的請求
+const PROCEDURAL_ORDER =
+    /^本件(?:訴訟)?(?:移送[^。，；應]{0,30}?法院|[^。，；應]{0,20}?(?:和解|撤回[^。，；應]{0,6}?)而?終結|[^。，；應]{0,30}?應?停止訴訟程序)(?=$|[，；])/;
 const COUNTERCLAIM = /反訴/;
 const COUNTERCLAIM_EXCEPTION = /^本訴/;
 
@@ -306,6 +309,10 @@ export const extractWinningParty = (text: string): WinningParty | undefined => {
     }
     if (!granted && (claimDismissed || orderOnPlaintiff)) {
         return 'defendant';
+    }
+    // 移送、和解或撤回而終結：即使有訴訟費用的負擔，也沒有勝敗
+    if (sentences.some((sentence) => PROCEDURAL_ORDER.test(sentence))) {
+        return undefined;
     }
     return winnerByCosts(cost);
 };
