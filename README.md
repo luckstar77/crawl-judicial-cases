@@ -62,11 +62,84 @@ npm run reclassify -- --apply           # 先備份資料庫，確認報告後�
 
 報告會列出每筆不符合判決的 ID、案由與理由。`--apply` 只刪除不符合且沒有會員留言或按讚的判決，有留言或按讚的會列在 `protectedIds` 交由人工確認。
 
+## 資料同步工作
+
+三個工作都只把房屋租賃糾紛判決（`classifyRentalDispute`）寫入 `judicialFileset`，同一 JID 以新內容覆蓋舊內容；不寫入 `district`。每次執行結束會輸出 JSON 摘要。程式在 `src/judicial/`（API 用戶端、CSV、RAR）、`src/sync/`（流程邏輯），腳本在 `src/scripts/sync-*.ts`。
+
+刪除分兩種：
+
+- **司法院移除**（Delete-Infor 清單、JDoc 回覆「查無資料…已從系統移除」）：法律義務，一定刪除。每批一個交易，先刪 `likes`、`comments` 中該判決的資料，再刪判決，摘要會列出刪除的留言、按讚數。
+- **不再判定為租賃糾紛**（每日同步重新取得的判決）：與 `reclassify` 相同，只刪除沒有留言、按讚的判決，有的列在 `protectedNotRental`。
+
+### 每日同步 `npm run sync:daily`
+
+使用裁判書開放 API（`https://data.judicial.gov.tw/jdg/api`，帳密同資料開放平臺）：
+
+1. `Auth` 取得 Token（有效 6 小時；回傳「驗證失敗」時重新驗證一次）。
+2. `JList` 取得 7 日前異動的 JID。
+3. 先以 JID 篩出地方法院／簡易庭民事第一審（法院代碼 `??DV`、`??EV`，字別不含上、抗、再等）。
+4. 依序呼叫 `JDoc`（每筆間隔 `--delay-ms`，預設 300 毫秒）：已移除則刪除；是租賃糾紛則 upsert；不是則依上述規則刪除舊資料。
+5. 網路錯誤與 5xx 最多重試 3 次（間隔遞增）。單筆失敗不影響其他判決，列在 `failures`，有失敗時結束代碼為 1。
+
+API 只在每日 00:00–06:00（Asia/Taipei）服務。不在這個時段時腳本會說明原因並以結束代碼 0 結束；執行到 06:00 時停止，未處理的筆數記在 `skippedAfterServiceWindow`。
+
+```bash
+npm run sync:daily                     # 正式執行
+npm run sync:daily -- --dry-run        # 不寫入資料庫（仍會讀取資料庫判斷哪些判決存在）
+npm run sync:daily -- --delay-ms=500
+```
+
+### Delete-Infor 刪除清單 `npm run sync:delete-infor`
+
+從資源清單找標題含 `Delete-Infor` 的 CSV 資料集（fileSetId 會隨更新改變），以會員 Token 下載，解析 `刪除日期,裁判日期年月,法院名稱,裁判ID`（UTF-8 BOM、CRLF、JID 以雙引號包住），每 500 筆查詢一次資料庫，存在的判決一律刪除。這是法律義務，預設直接刪除；`--dry-run` 只列出 `presentIds`。
+
+清單中有少數 ID 缺少最後的檢查單號（例如 `TPSM,93,台上,9326,20040116`），程式仍以原字串比對，並列在 `incompleteIds` 供人工確認。解析不到任何 ID 時視為格式改變，直接失敗，不會當成沒有要刪除的判決。
+
+```bash
+npm run sync:delete-infor
+npm run sync:delete-infor -- --dry-run
+```
+
+### 每月批次匯入 `npm run sync:monthly`
+
+補資料用：資源清單中每月一個 RAR 資料集（標題如 `202609裁判書--(20261116Update)`，約 200–260 MB）。RAR 內的結構是 `YYYYMM/法院名稱＋類別/JID.json`，例如 `202609/臺北簡易庭民事/TPEV,115,北簡,9567,20260915,1.json`。程式只解出檔名 JID 為地方法院／簡易庭民事第一審的項目（202609 共 96,509 筆中約 44,720 筆），以檔案模式解壓（不會把整個 RAR 讀進記憶體），每讀完一筆就刪除，再分類並每 200 筆 upsert 一次。每個月份處理完（含失敗）都會刪除下載的 RAR 與解出的檔案。
+
+月份各自獨立，某個月失敗不影響其他月份（結束代碼為 1），重新執行只會覆蓋相同 JID。
+
+```bash
+npm run sync:monthly -- --month=202609
+npm run sync:monthly -- --from=202212 --to=202609
+npm run sync:monthly -- --month=202609 --dry-run   # 不寫入資料庫
+```
+
+暫存檔放在系統暫存資料夾，可用 `TMPDIR=/data/tmp npm run sync:monthly ...` 指定，每個月份需要約 300 MB。
+
+### 建議的 crontab（Ubuntu）
+
+主機時區可能是 UTC。先用 `timedatectl` 確認；若 cron 支援 `CRON_TZ`，用下面第一種寫法，否則用 UTC 時間（臺北 01:10 = UTC 前一天 17:10；臺北 20 日 01:40 = UTC 19 日 17:40）。`logs/` 目錄需先建立。
+
+```cron
+CRON_TZ=Asia/Taipei
+# 每日 01:10 同步裁判書開放 API（服務時間 00:00–06:00）
+10 1 * * * cd /path/to/crawl-judicial-cases && npm run sync:daily >> logs/sync-daily.log 2>&1
+# 每月 20 日 01:40 先處理刪除清單，再匯入兩個月前的資料
+40 1 20 * * cd /path/to/crawl-judicial-cases && npm run sync:delete-infor >> logs/sync-delete-infor.log 2>&1; npm run sync:monthly -- --month=$(date -d '2 months ago' +\%Y\%m) >> logs/sync-monthly.log 2>&1
+```
+
+UTC 主機、不支援 `CRON_TZ` 時：
+
+```cron
+10 17 * * * cd /path/to/crawl-judicial-cases && npm run sync:daily >> logs/sync-daily.log 2>&1
+40 17 19 * * cd /path/to/crawl-judicial-cases && npm run sync:delete-infor >> logs/sync-delete-infor.log 2>&1; npm run sync:monthly -- --month=$(date -d '2 months ago' +\%Y\%m) >> logs/sync-monthly.log 2>&1
+```
+
+月份資料集約在兩個月後的中旬發布（2026-11-26 時最新的是 202609，標題為 20261116Update），所以 20 日匯入兩個月前的資料，例如 11 月 20 日匯入 202609。若當時還沒有發布，摘要會出現 `資源清單中找不到這個月份的 RAR 資料集`，可之後再以 `--month` 補跑。
+
 ## 環境變數
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
-| `JUDICIAL_ACCOUNT`、`JUDICIAL_PWD` | — | 司法院資料開放平臺帳密 |
+| `JUDICIAL_ACCOUNT`、`JUDICIAL_PWD` | — | 司法院資料開放平臺帳密（同步工作必填；裁判書開放 API 也使用同一組） |
 | `UPSERT` | `false` | `true` 時重複的判決會被覆寫 |
 | `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE` | `127.0.0.1`、`3306`、`root`、空字串、`rental` | MySQL 連線 |
 
@@ -74,7 +147,7 @@ npm run reclassify -- --apply           # 先備份資料庫，確認報告後�
 
 ```bash
 npm test                # 單元測試
-npm run test:coverage   # 覆蓋率（判斷規則與重新檢查邏輯）
+npm run test:coverage   # 覆蓋率（判斷規則、重新檢查與同步工作）
 npm run typecheck
 ```
 
