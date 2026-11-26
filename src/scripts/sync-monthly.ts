@@ -21,6 +21,7 @@ import { downloadDeleteInforCsv } from '../sync/delete-infor-source';
 import { loadRemovedJudgmentMatcher } from '../sync/delete-infor-sync';
 import { MonthWorkspace, runMonthlyImport } from '../sync/monthly-import';
 import { requireEnv } from '../sync/require-env';
+import { describeError } from '../utils/describe-error';
 
 const SIGNAL_EXIT_CODE = 130;
 const activeWorkDirs = new Set<string>();
@@ -82,6 +83,6 @@ const createWorkspace = async (month: string): Promise<MonthWorkspace> => {
         await client.destroy();
     }
 })().catch((error) => {
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+    console.error(describeError(error));
     process.exit(1);
 });

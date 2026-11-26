@@ -1,7 +1,7 @@
 // JudgmentStore 的 knex 實作（MySQL judicialFileset、comments、likes）。
 import { Knex } from 'knex';
 import { JudgmentRecord } from '../judicial/judgment-record';
-import { chunk } from '../reclassify/reclassify';
+import { chunk } from '../utils/chunk';
 import {
     AuthoritativeDeleteResult,
     HeuristicDeleteResult,

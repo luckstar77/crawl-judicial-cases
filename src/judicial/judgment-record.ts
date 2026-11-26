@@ -155,13 +155,20 @@ export const buildJudgmentRecord = (
         jtitle: optionalColumn(raw.JTITLE, COLUMN_LENGTH.jtitle),
         jfull,
         jpdf: optionalUrl(raw.JPDF),
-        plaintiff: optionalColumn(fields.plaintiff, COLUMN_LENGTH.plaintiff),
-        defendant: optionalColumn(fields.defendant, COLUMN_LENGTH.defendant),
-        rent: toRent(fields.rent),
-        city: optionalColumn(fields.city, COLUMN_LENGTH.city),
-        win: toWin(fields.win),
+        ...toExtractedColumns(fields),
     };
 };
+
+export type ExtractedColumns = Pick<JudgmentRecord, 'plaintiff' | 'defendant' | 'rent' | 'city' | 'win'>;
+
+/** 擷取結果轉成資料表欄位值（找不到為 null，並符合欄位長度與型別）；入庫與重新擷取共用 */
+export const toExtractedColumns = (fields: JudgmentFields): ExtractedColumns => ({
+    plaintiff: optionalColumn(fields.plaintiff, COLUMN_LENGTH.plaintiff),
+    defendant: optionalColumn(fields.defendant, COLUMN_LENGTH.defendant),
+    rent: toRent(fields.rent),
+    city: optionalColumn(fields.city, COLUMN_LENGTH.city),
+    win: toWin(fields.win),
+});
 
 /** 先判斷是否為房屋租賃糾紛，符合才擷取欄位並組出資料列 */
 export const evaluateJudgment = (

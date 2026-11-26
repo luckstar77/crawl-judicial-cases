@@ -13,6 +13,7 @@ import { assertKnownArgs, hasFlag } from '../sync/cli-options';
 import { downloadDeleteInforCsv } from '../sync/delete-infor-source';
 import { runDeleteInforSync } from '../sync/delete-infor-sync';
 import { requireEnv } from '../sync/require-env';
+import { describeError } from '../utils/describe-error';
 
 (async () => {
     const argv = process.argv.slice(2);
@@ -35,6 +36,6 @@ import { requireEnv } from '../sync/require-env';
         await client.destroy();
     }
 })().catch((error) => {
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+    console.error(describeError(error));
     process.exit(1);
 });

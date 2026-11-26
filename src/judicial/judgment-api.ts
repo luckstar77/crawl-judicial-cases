@@ -1,5 +1,5 @@
 // 司法院裁判書開放 API（Auth、JList、JDoc）用戶端；規格見 README「每日同步」。
-import { HttpClient, HttpResponse, HttpStatusError, isSuccessStatus, Sleep, withRetry } from './http';
+import { HttpClient, HttpResponse, HttpStatusError, isSuccessStatus, SERVER_ERROR_STATUS, Sleep, withRetry } from './http';
 import { normalizeJid } from './jid';
 import { RawJudgment } from './judgment-record';
 
@@ -10,7 +10,6 @@ const AUTH_FAILED_MESSAGE = '驗證失敗';
 /** 「查無資料，本裁判可能未公開或已從系統移除…」：本院已移除，使用者必須刪除 */
 const REMOVED_MESSAGE = '查無資料';
 
-const SERVER_ERROR_STATUS = 500;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 1000;
 

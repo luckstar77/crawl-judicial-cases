@@ -14,6 +14,7 @@ import { assertKnownArgs, hasFlag, parseDelayMs, readOption } from '../sync/cli-
 import { runDailySync } from '../sync/daily-sync';
 import { formatTaipeiTime, isWithinServiceWindow } from '../sync/service-window';
 import { requireEnv } from '../sync/require-env';
+import { describeError } from '../utils/describe-error';
 
 (async () => {
     const argv = process.argv.slice(2);
@@ -46,6 +47,6 @@ import { requireEnv } from '../sync/require-env';
         await client.destroy();
     }
 })().catch((error) => {
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+    console.error(describeError(error));
     process.exit(1);
 });

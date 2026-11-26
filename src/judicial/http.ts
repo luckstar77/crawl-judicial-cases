@@ -21,7 +21,7 @@ export type Sleep = (ms: number) => Promise<void>;
 
 export const sleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const SERVER_ERROR_STATUS = 500;
+export const SERVER_ERROR_STATUS = 500;
 const SUCCESS_STATUS_MIN = 200;
 const SUCCESS_STATUS_MAX = 299;
 const REQUEST_TIMEOUT_MS = 60_000;

@@ -11,9 +11,9 @@ dotenv.config();
 
 import * as fs from 'fs';
 import * as knex from '../db/knex';
+import { createKnexJudgmentStore } from '../db/knex-judgment-store';
 import { buildMysqlConfig } from '../db/mysql-config';
 import {
-    chunk,
     classifyRows,
     JudgmentRow,
     partitionDeletable,
@@ -21,12 +21,11 @@ import {
     summarizeReclassification,
 } from '../reclassify/reclassify';
 import { assertKnownArgs, hasFlag, readOption } from '../sync/cli-options';
+import { describeError } from '../utils/describe-error';
 
 const READ_BATCH_SIZE = 500;
-const DELETE_BATCH_SIZE = 500;
 const TOP_TITLE_COUNT = 20;
 const DEFAULT_OUTPUT = 'reclassify-report.json';
-
 
 const countTitles = (rejected: ReclassifiedJudgment[]): [string, number][] => {
     const counts: Record<string, number> = {};
@@ -88,30 +87,12 @@ const countTitles = (rejected: ReclassifiedJudgment[]): [string, number][] => {
         }
 
         // 刪除時再排除一次有留言或按讚的判決，避免產生報告後才新增的留言變成孤兒資料
-        let deleted = 0;
-        for (const batch of chunk(deletable, DELETE_BATCH_SIZE)) {
-            deleted += await client.transaction((trx) =>
-                trx('judicialFileset')
-                    .whereIn('id', batch)
-                    .whereNotExists(
-                        trx('comments')
-                            .select('id')
-                            .where('comments.filesetId', trx.ref('judicialFileset.id'))
-                    )
-                    .whereNotExists(
-                        trx('likes')
-                            .select('id')
-                            .where('likes.filesetId', trx.ref('judicialFileset.id'))
-                    )
-                    .del()
-            );
-        }
+        const { deleted } = await createKnexJudgmentStore(client).deleteIfUnreferenced(deletable);
         console.log(`已刪除 ${deleted} 筆`);
     } finally {
         await client.destroy();
     }
 })().catch((error) => {
-    // 只印名稱與訊息：完整的錯誤物件可能帶有連線設定
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+    console.error(describeError(error));
     process.exit(1);
 });

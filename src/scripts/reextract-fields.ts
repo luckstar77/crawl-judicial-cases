@@ -13,13 +13,13 @@ import * as fs from 'fs';
 import * as knex from '../db/knex';
 import { buildMysqlConfig } from '../db/mysql-config';
 import { assertKnownArgs, hasFlag, readOption } from '../sync/cli-options';
-import { chunk } from '../reclassify/reclassify';
+import { chunk } from '../utils/chunk';
 import { diffFields, FieldChange, sampleChanges, StoredJudgment, summarizeChanges } from '../reextract/reextract';
+import { describeError } from '../utils/describe-error';
 
 const READ_BATCH_SIZE = 500;
 const UPDATE_BATCH_SIZE = 200;
 const DEFAULT_OUTPUT = 'reextract-report.json';
-
 
 const isFieldChange = (change: FieldChange | undefined): change is FieldChange => change !== undefined;
 
@@ -77,7 +77,6 @@ const isFieldChange = (change: FieldChange | undefined): change is FieldChange =
         await client.destroy();
     }
 })().catch((error) => {
-    // 只印名稱與訊息：完整的錯誤物件可能帶有連線設定
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+    console.error(describeError(error));
     process.exit(1);
 });

@@ -1,6 +1,7 @@
 // 以新的擷取規則重新計算已入庫判決的原告、被告、租金、勝敗與城市
 // （純邏輯，資料庫存取在 scripts/reextract-fields.ts）。
-import { extractJudgmentFields, JudgmentFields } from '../judgment/extract-fields';
+import { toExtractedColumns } from '../judicial/judgment-record';
+import { extractJudgmentFields } from '../judgment/extract-fields';
 
 export const EXTRACTED_FIELDS = ['plaintiff', 'defendant', 'rent', 'win', 'city'] as const;
 export type ExtractedField = (typeof EXTRACTED_FIELDS)[number];
@@ -32,17 +33,10 @@ const DEFAULT_SAMPLE_LIMIT = 20;
 const normalizeStored = (value: FieldValue | undefined): FieldValue =>
     value === undefined || value === '' ? null : value;
 
-const toFieldValues = (fields: JudgmentFields): FieldValues => ({
-    plaintiff: fields.plaintiff ?? null,
-    defendant: fields.defendant ?? null,
-    rent: fields.rent ?? null,
-    win: fields.win ?? null,
-    city: fields.city ?? null,
-});
-
 /** 比較新舊欄位，只回傳有差異的欄位；新規則找不到的欄位會清成 null。 */
 export const diffFields = (row: StoredJudgment): FieldChange | undefined => {
-    const next = toFieldValues(extractJudgmentFields(row.jfull ?? '', row.id));
+    // 與入庫相同的轉換：找不到為 null，並符合欄位長度
+    const next: FieldValues = toExtractedColumns(extractJudgmentFields(row.jfull ?? '', row.id));
     const values: Partial<FieldValues> = {};
     const before: Partial<FieldValues> = {};
     EXTRACTED_FIELDS.forEach((field) => {

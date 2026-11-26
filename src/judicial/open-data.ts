@@ -1,5 +1,5 @@
 // 司法院資料開放平臺：資源清單（公開）、會員 Token 與檔案下載。
-import { HttpClient, HttpStatusError, isSuccessStatus, Sleep, withRetry } from './http';
+import { HttpClient, HttpStatusError, isSuccessStatus, SERVER_ERROR_STATUS, Sleep, withRetry } from './http';
 
 export const RESOURCE_LIST_URL =
     'https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources';
@@ -12,7 +12,6 @@ const DELETE_INFOR_TITLE = 'Delete-Infor';
 /** 每月資料集標題，例如「202609裁判書--(20261116Update)」或舊的「199601」 */
 const MONTHLY_TITLE = /^(\d{6})(?!\d)/;
 
-const SERVER_ERROR_STATUS = 500;
 const DEFAULT_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 5000;
 
