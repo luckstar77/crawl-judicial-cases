@@ -1,18 +1,22 @@
-// 以記憶體 SQLite（外鍵開啟）驗證查詢與刪除順序；正式環境是 MySQL，語法差異見 README。
+// 以兩種資料庫驗證查詢與刪除順序：
+// - 記憶體 SQLite（外鍵開啟）：每次都會執行。
+// - MySQL 8（與正式環境相同的資料表定義與連線設定）：設定 MYSQL_TEST_DATABASE 時才執行，CI 以 MySQL service 執行。
+//   測試會刪除並重建資料表，資料庫名稱必須以 _test 結尾，避免誤刪正式資料。
 import { knex, Knex } from 'knex';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildJudgmentRecord } from '../judicial/judgment-record';
 import { rentalRaw } from '../sync/testing/fixtures';
 import { createKnexJudgmentStore, UPSERT_MERGE_COLUMNS } from './knex-judgment-store';
+import { buildMysqlConfig } from './mysql-config';
+
+const TEST_DATABASE_SUFFIX = '_test';
 
 const jid = (no: number) => `TPEV,111,北簡,${no},20220510,1`;
 const record = (no: number, title = '遷讓房屋') =>
     buildJudgmentRecord(rentalRaw({ JID: jid(no), JTITLE: title }), () => ({ rent: 1000 }));
 
-let client: Knex;
-
-beforeEach(async () => {
-    client = knex({
+const connectSqlite = async (): Promise<Knex> => {
+    const sqlite = knex({
         client: 'better-sqlite3',
         connection: { filename: ':memory:' },
         useNullAsDefault: true,
@@ -21,7 +25,7 @@ beforeEach(async () => {
             done();
         } },
     });
-    await client.schema.createTable('judicialFileset', (table) => {
+    await sqlite.schema.createTable('judicialFileset', (table) => {
         table.string('id', 50).primary();
         table.string('jcase', 10);
         table.date('jdate').notNullable();
@@ -38,18 +42,72 @@ beforeEach(async () => {
         table.string('win');
     });
     for (const name of ['comments', 'likes']) {
-        await client.schema.createTable(name, (table) => {
+        await sqlite.schema.createTable(name, (table) => {
             table.increments('id');
             table.string('filesetId', 50).notNullable().references('id').inTable('judicialFileset');
         });
     }
-});
+    return sqlite;
+};
 
-afterEach(async () => {
-    await client.destroy();
-});
+/** 正式環境 rental 資料庫的資料表定義（SHOW CREATE TABLE，只保留本模組用到的欄位） */
+const MYSQL_SCHEMA = [
+    'DROP TABLE IF EXISTS likes',
+    'DROP TABLE IF EXISTS comments',
+    'DROP TABLE IF EXISTS judicialFileset',
+    `CREATE TABLE judicialFileset (
+        id varchar(50) NOT NULL, jcase varchar(10) DEFAULT NULL, jdate date NOT NULL, jfull longtext NOT NULL,
+        jno varchar(10) DEFAULT NULL, jpdf varchar(500) DEFAULT NULL, jtitle varchar(50) DEFAULT NULL, jyear varchar(10) DEFAULT NULL,
+        plaintiff varchar(100) DEFAULT NULL, defendant varchar(100) DEFAULT NULL, rent int DEFAULT NULL,
+        city varchar(10) DEFAULT NULL, district varchar(10) DEFAULT NULL, win enum('plaintiff','defendant') DEFAULT NULL,
+        PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    `CREATE TABLE comments (
+        id int unsigned NOT NULL AUTO_INCREMENT, filesetId varchar(50) NOT NULL, PRIMARY KEY (id),
+        CONSTRAINT comments_fk FOREIGN KEY (filesetId) REFERENCES judicialFileset (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    `CREATE TABLE likes (
+        id int NOT NULL AUTO_INCREMENT, filesetId varchar(50) NOT NULL, PRIMARY KEY (id),
+        CONSTRAINT likes_fk FOREIGN KEY (filesetId) REFERENCES judicialFileset (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+];
 
-describe('createKnexJudgmentStore', () => {
+const connectMysql = async (database: string): Promise<Knex> => {
+    if (!database.endsWith(TEST_DATABASE_SUFFIX)) {
+        throw new Error(`MYSQL_TEST_DATABASE 必須以 ${TEST_DATABASE_SUFFIX} 結尾，避免刪除正式資料`);
+    }
+    const mysql = knex(
+        buildMysqlConfig({
+            MYSQL_HOST: process.env.MYSQL_TEST_HOST,
+            MYSQL_PORT: process.env.MYSQL_TEST_PORT,
+            MYSQL_USER: process.env.MYSQL_TEST_USER,
+            MYSQL_PASSWORD: process.env.MYSQL_TEST_PASSWORD,
+            MYSQL_DATABASE: database,
+        })
+    );
+    for (const sql of MYSQL_SCHEMA) {
+        await mysql.raw(sql);
+    }
+    return mysql;
+};
+
+const mysqlTestDatabase = process.env.MYSQL_TEST_DATABASE;
+const backends = [
+    { name: 'SQLite', connect: connectSqlite },
+    ...(mysqlTestDatabase ? [{ name: 'MySQL', connect: () => connectMysql(mysqlTestDatabase) }] : []),
+];
+
+let client: Knex;
+
+describe.each(backends)('createKnexJudgmentStore ($name)', ({ connect }) => {
+    beforeEach(async () => {
+        client = await connect();
+    });
+
+    afterEach(async () => {
+        await client.destroy();
+    });
+
     it('should insert and then overwrite by id without touching district', async () => {
         const store = createKnexJudgmentStore(client);
         await store.upsert([record(1, '舊案由'), record(2)]);
