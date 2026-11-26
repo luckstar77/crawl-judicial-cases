@@ -167,9 +167,23 @@ UTC 主機、不支援 `CRON_TZ` 時：
 
 ```bash
 npm test                # 單元測試
-npm run test:coverage   # 覆蓋率（判斷規則、欄位擷取、重新檢查與同步工作）
+npm run test:coverage   # 覆蓋率（判斷規則、欄位擷取、重新檢查與同步工作），低於 80% 會失敗
 npm run typecheck
+npm run lint
 ```
+
+`src/db/knex-judgment-store.test.ts` 預設只用記憶體 SQLite。設定 `MYSQL_TEST_DATABASE` 時，會再以正式環境的資料表定義在 MySQL 上跑一次。測試會刪除並重建資料表，所以資料庫名稱必須以 `_test` 結尾：
+
+```bash
+docker run -d --name crawl-mysql-test -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_DATABASE=crawl_test -p 33307:3306 mysql:8.0
+MYSQL_TEST_DATABASE=crawl_test MYSQL_TEST_PORT=33307 npm test
+```
+
+其他連線設定為 `MYSQL_TEST_HOST`、`MYSQL_TEST_PORT`、`MYSQL_TEST_USER`、`MYSQL_TEST_PASSWORD`，預設為 `127.0.0.1`、`3306`、`root`、空字串。
+
+### CI
+
+GitHub Actions（`.github/workflows/ci.yml`）會在 push 到 master 和每個 pull request 時，以 Node 22 執行 lint、typecheck，並帶著 MySQL 8.0 service 跑覆蓋率測試。
 
 ## 參考第三方 API
 - 指定主題分類代碼取得資料源清單 GET https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources
