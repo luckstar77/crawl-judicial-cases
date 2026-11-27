@@ -137,6 +137,13 @@ npm run sync:monthly -- --month=202609 --dry-run   # 不寫入資料庫
 
 ### 部署（Ubuntu 主機）
 
+主機必須在台灣。司法院的資料開放平臺（`opendata.judicial.gov.tw`）與裁判書開放 API（`data.judicial.gov.tw`）擋境外 IP：2026-11-27 實測，從 AWS 東京（ap-northeast-1）連線會逾時，從 AWS 台北（ap-east-2）可以正常連線。部署前先在主機上確認：
+
+```bash
+curl -sS -o /dev/null -m 20 -w '%{http_code}\n' https://opendata.judicial.gov.tw/data/api/rest/categories/051/resources   # 應為 200
+```
+
+
 ```bash
 git clone https://github.com/luckstar77/crawl-judicial-cases.git
 cd crawl-judicial-cases
