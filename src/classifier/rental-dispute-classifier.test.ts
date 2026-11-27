@@ -110,6 +110,16 @@ describe('classifyRentalDispute', () => {
             ).toBe(true);
         });
 
+        it('should treat a house and a parking space named before 租賃契約 as housing', () => {
+            const body =
+                '原告主張：原告向被告承租系爭房屋及停車位，雙方簽訂房屋及車位租賃契約，原告溢付租金。' +
+                '嗣被告要求原告另訂定房屋及車位租賃契約。';
+
+            expect(
+                classifyRentalDispute(judgment(body, { JTITLE: '返還溢付租金' }))
+            ).toEqual({ isRentalDispute: true, reason: 'rental-title' });
+        });
+
         it('should accept a lease of a house together with its land', () => {
             const body =
                 '原告主張：被告向原告承租系爭土地及房屋經營餐廳，約定每月租金50,000元。' +
@@ -277,6 +287,130 @@ describe('classifyRentalDispute', () => {
         });
     });
 
+    describe('accepted leases between the litigants under an ambiguous title', () => {
+        it.each([
+            [
+                '出租 followed directly by the tenant',
+                '原告主張：原告前將門牌號碼高雄市○○區○○街00號房屋出租被告經營美容坊，被告遷出時未回復原狀。',
+            ],
+            [
+                'a lease signed with 簽定',
+                '原告主張：兩造間於民國110年1月1日簽定租賃契約，租賃標的為新北市○○區○○路00巷0號1樓房屋，詎被告提前搬離。',
+            ],
+            [
+                'a lease called 租賃合約',
+                '原告主張：原告於110年1月1日就新北市○○街000號5樓房屋與被告簽訂租賃合約，被告未依約繳納水電費。',
+            ],
+            [
+                'a parenthetical between the tenant and 承租',
+                '原告起訴主張：被告前（先後於99年1月1日、101年1月1日）承租原告所有新北市○○區○○路000號1樓、3樓房屋，' +
+                    '被告遷出時遺留大量物品。',
+            ],
+            [
+                'a lease signed with 訂定',
+                '原告之主張：原告於110年1月1日與被告訂定房屋租賃契約書，承租新竹市○○路○段000號房屋1樓。',
+            ],
+            [
+                'a sublease contract (轉租契約)',
+                '原告主張：兩造於110年1月1日簽訂社會住宅轉租契約書，約定原告承租屏東縣○○市○○路00號房屋。',
+            ],
+            [
+                'a lease made with the defendant across a comma',
+                '原告起訴主張：原告於民國九十年一月間，與被告就其所有門牌號碼臺北市○○區○○路00號房屋，成立租賃契約，' +
+                    '原告並交付六萬元作為保證金。',
+            ],
+            [
+                'a tenant who leased from 伊 meaning the plaintiff',
+                '原告主張：被告於110年間承租伊所有之門牌號碼臺中市○○區○○路00號房屋，迄今仍積欠水電費。',
+            ],
+            [
+                'the defendant as tenant with the lease term in the same sentence',
+                '原告主張：被告自民國109年1月1日起承租新竹市○○區○○街00號房屋，於111年1月租期屆滿後，' +
+                    '仍未給付自來水費及延遲交屋期間之租金。',
+            ],
+            [
+                'the plaintiff as lessor and the defendant as tenant',
+                '原告主張：原告為系爭房屋之出租人，被告為承租人，被告遷出時毀損系爭房屋之門窗。',
+            ],
+            [
+                'the defendant as tenant and an agreed termination in the same sentence',
+                '原告主張：被告承租系爭房屋，嗣兩造合意終止，被告遷出時未回復原狀。',
+            ],
+            [
+                'a landlord who bought the house with a spouse during the marriage',
+                '原告主張：原告與配偶丙○○於婚姻關係存續中共同購置系爭房屋，並出租予被告，被告積欠租金未付。',
+            ],
+            [
+                'a plaintiff tenant renting the defendant house after a date',
+                '原告主張：原告自110年1月1日起承租被告臺北市○○區○○路00號之房屋，被告於租賃期間擅自進入。',
+            ],
+            [
+                'two defendants renting the plaintiff house after a date',
+                '原告主張：被告2人於110年1月1日起承租原告所有臺北市○○區○○路00號房屋，使用範圍以現況為限。',
+            ],
+            [
+                'a lease signed with the plaintiff where the address sits before 租賃契約',
+                '原告起訴主張：被告於110年1月1日和原告簽定承租臺北市○○區○○路○段000號0樓之2房屋（下稱系爭房屋）之租賃契約，被告提前搬離。',
+            ],
+            [
+                'a tenant renting from the landlord who is the defendant',
+                '原告主張：原告於110年1月1日向房東即被告承租臺北市○○區○○路00號房屋，交屋時水電無法使用。',
+            ],
+            [
+                'rent arrears the plaintiff claims from the defendant',
+                '原告主張之事實，業據其提出房屋租賃契約書為證。從而，原告請求被告給付積欠之租金48,000元，為有理由。',
+            ],
+            [
+                'a defendant described as the landlord of the house the plaintiff rents',
+                '原告主張：被告係原告所承租房屋之房東，被告擅自更換門鎖。',
+            ],
+            [
+                'a tenant referred to as renting from 其',
+                '原告起訴主張：被告於110年1月1日向其承租臺北市○○區○○路00號房屋，被告遷出時毀損門窗。',
+            ],
+            [
+                'rent the defendant owes the plaintiff, with the creditor named after the verb',
+                '原告主張：被告自110年1月起積欠原告房租，經催告仍未給付。',
+            ],
+            [
+                'both sides having had a lease',
+                '原告主張：兩造前有房屋租賃契約關係，被告遷出後未返還鑰匙。',
+            ],
+            [
+                'a tenant who knew the lease had ended but cites a marital home',
+                '原告主張：被告於110年1月1日向原告承租系爭房屋，被告明知租約已於112年屆滿，仍以系爭房屋為其婚姻住所為由拒不遷出。',
+            ],
+            [
+                'a noisy tenant who knew the landlord was married',
+                '原告主張：被告向原告承租系爭房屋，被告明知原告已婚與配偶同住樓上，仍深夜喧鬧。',
+            ],
+            [
+                'tenant and lessor roles where a third-party agent brokered the lease',
+                '原告主張：原告為承租人，被告為出租人，原告透過訴外人丙物業仲介公司仲介承租系爭房屋，被告未返還議價保管金。',
+            ],
+            [
+                'both sides described as lessor and tenant',
+                '原告主張：兩造為出租人與承租人關係，被告遷出系爭房屋時未回復原狀。',
+            ],
+            [
+                'tenant and lessor roles far apart in one long sentence',
+                `原告主張：原告為承租人，${'系爭房屋位於臺北市○○區○○路00號，屋況良好，'.repeat(10)}被告為出租人，被告未返還押金。`,
+            ],
+            [
+                'unpaid rent that 未向 does not negate',
+                '原告主張：被告承租系爭房屋後，迄未向原告給付租金及系爭租約約定之違約金。',
+            ],
+            [
+                'the plaintiff as tenant and the defendant as lessor in the same sentence',
+                '原告主張：原告為承租房屋開設店面，在網路覓得被告為出租人。兩造協商後，原告交付訂金，被告卻拒絕簽約。',
+            ],
+        ])('should accept %s', (_, body) => {
+            expect(
+                classifyRentalDispute(judgment(body, { JTITLE: '損害賠償' }))
+            ).toEqual({ isRentalDispute: true, reason: 'lease-evidence' });
+        });
+    });
+
     describe('rejected by court and document type', () => {
         it('should reject a criminal case', () => {
             const result = classifyRentalDispute(
@@ -352,6 +486,173 @@ describe('classifyRentalDispute', () => {
             expect(classifyRentalDispute(judgment(body))).toEqual({
                 isRentalDispute: false,
                 reason: 'no-lease-between-parties',
+            });
+        });
+
+        it.each([
+            [
+                'a fire spreading from a neighbor to the house the plaintiff rents',
+                '原告起訴主張：被告疏於維護電源線路，致引發火災事故，延燒至原告承租之房屋，原告存放之貨物均遭燒燬。',
+            ],
+            [
+                'noise from a neighbor who rents the flat upstairs',
+                '原告主張：兩造為上下樓鄰居，被告於110年1月間承租系爭樓上房屋以來，每日深夜製造噪音，侵害原告居住安寧。',
+            ],
+            [
+                'a trespass into the room the plaintiff rents',
+                '原告主張：被告於110年1月1日晚間，未經原告同意進入原告所承租之新竹市○○路000號租屋處，竊取原告財物。',
+            ],
+            [
+                'an insurer suing a tenant whose shop caught fire',
+                '原告起訴主張：被告承租臺北市○○區○○路000號建物經營商店，因電器因素引發火災，' +
+                    '延燒原告承保之鄰房，原告已理賠被保險人。',
+            ],
+            [
+                'a fire spreading from the house next door that the defendant rents',
+                '原告主張：被告承租原告隔壁之房屋經營餐廳，因廚房失火延燒原告房屋。',
+            ],
+            [
+                'a fire from a shop the defendant rents beside the plaintiff house',
+                '原告主張：被告承租之店面與原告所有房屋相鄰，被告失火延燒原告房屋。',
+            ],
+            [
+                'water leaking from a house the defendant rents into the plaintiff house',
+                '原告主張：被告承租之房屋漏水致原告房屋受損。',
+            ],
+            [
+                'noise from the flat upstairs that the defendant rents from someone',
+                '原告主張：被告承租原告樓上房屋，每日製造噪音。',
+            ],
+            [
+                'each side leasing with a third party in separate sentences',
+                '原告主張：原告為承租人，向訴外人甲承租房屋；被告為出租人，將其房屋出租予訴外人乙，被告之房客製造噪音。',
+            ],
+            [
+                'a flat both sides rent together',
+                '原告主張：兩造承租之套房於110年1月1日失火，被告未盡保管責任。',
+            ],
+            [
+                'a neighbour living beside the house the plaintiff rents from the defendant',
+                '原告主張：原告自110年1月1日起承租被告住處旁之臺北市○○區○○路00號房屋，被告每日燒香致煙霧飄入。',
+            ],
+            [
+                'a shop next to the plaintiff house named after the address',
+                '原告主張：被告承租原告所有臺北市○○區○○路00號房屋隔壁之店面經營餐廳，因失火延燒原告房屋。',
+            ],
+            [
+                'a tenant renting from his own father',
+                '原告主張：被告向其父承租房屋一間，原告為鄰居，被告房屋漏水致原告房屋受損。',
+            ],
+            [
+                'a burglary of a house rented from the defendant brother',
+                '原告主張：被告於110年1月1日侵入原告承租被告之兄所有之臺北市○○區○○路00號房屋，竊取原告財物。',
+            ],
+            [
+                'a flatmate owing a share of the rent',
+                '原告主張：原告與被告同住系爭房屋，被告積欠原告其應負擔之房租。',
+            ],
+            [
+                'co-tenants who signed with the landlord',
+                '原告主張：兩造於110年1月1日與房東簽訂房屋租賃契約，共同承租系爭房屋，被告未分擔租金。',
+            ],
+            [
+                'an agent who brokered the lease',
+                '原告主張：原告經由被告仲介承租臺北市○○區○○路00號房屋，每月租金2萬元，被告未告知房屋漏水。',
+            ],
+            [
+                'a property manager who kept collected rent',
+                '原告主張：原告委託被告管理系爭房屋並代收租金，被告迄未給付原告代收之租金。',
+            ],
+            [
+                'a co-owner who did not pass on the plaintiff share of the rent',
+                '原告主張：兩造共有系爭房屋，應有部分各2分之1，約定由被告出租。詎被告自110年1月起未給付原告應分得之租金。',
+            ],
+            [
+                'a co-tenant who did not pay a share of the rent',
+                '原告主張：兩造共同承租系爭房屋，被告未給付原告其應分擔之租金。',
+            ],
+            [
+                'a burglary of the house the plaintiff rents',
+                '原告主張：被告進入原告承租之房屋竊取財物。',
+            ],
+            [
+                'a neighbouring lessor who is the defendant',
+                '原告主張：原告承租系爭房屋，隔壁房屋之出租人即被告施工不慎，致原告房屋漏水。',
+            ],
+            [
+                'a parking dispute stating the defendant never leased from the plaintiff',
+                '原告主張：被告未向原告承租，亦未經原告同意，即將其車輛停放於原告所有之系爭房屋騎樓。',
+            ],
+            [
+                'cohabitants living in a flat one of them rents',
+                '原告主張：兩造曾為同居之男女朋友，被告於110年1月1日，在由原告所承租、兩造同居之新北市○○區○○路0巷0號2樓房屋，' +
+                    '毀損原告物品。',
+            ],
+            [
+                'co-tenants suing each other over shared rent',
+                '原告主張：兩造共同承租新北市○○區○○路000號房屋，被告搬離後未分擔其應負擔之費用。',
+            ],
+            [
+                'a co-tenant of the defendant who is not a party',
+                '原告主張：兩造為同居之男女朋友，原同住於被告承租之新北市○○區○○路000號住處，被告搬離後擅自取走原告物品。',
+            ],
+        ])('should reject a lease that does not involve both litigants: %s', (_, body) => {
+            expect(
+                classifyRentalDispute(judgment(body, { JTITLE: '損害賠償' }))
+            ).toEqual({ isRentalDispute: false, reason: 'no-lease-between-parties' });
+        });
+
+        it('should classify a long text of one-sided roles without a claim opening quickly', () => {
+            const body = `查${'被告為承租人'.repeat(16000)}。`;
+            const start = Date.now();
+
+            classifyRentalDispute(judgment(body, { JTITLE: '損害賠償' }));
+
+            expect(Date.now() - start).toBeLessThan(1000);
+        });
+
+        it('should classify a long one-sided text without a claim opening quickly', () => {
+            const body = `查${'原告承租之房屋'.repeat(15000)}。`;
+            const start = Date.now();
+
+            classifyRentalDispute(judgment(body, { JTITLE: '損害賠償' }));
+
+            expect(Date.now() - start).toBeLessThan(1000);
+        });
+
+        it('should reject a claim about infringing spousal rights that mentions renting a flat', () => {
+            const body =
+                '原告主張：原告與丙○○於民國100年1月1日結婚，現婚姻關係存續中。被告明知丙○○已婚，仍與丙○○交往，' +
+                '丙○○並向被告承租房屋同居。';
+
+            expect(
+                classifyRentalDispute(judgment(body, { JTITLE: '損害賠償' }))
+            ).toEqual({ isRentalDispute: false, reason: 'excluded-claim' });
+        });
+
+        it.each(['損害賠償（侵害配偶身分法益）', '夫妻剩餘財產分配等', '撤銷婚姻等'])(
+            'should reject the marital title %s',
+            (title) => {
+                expect(
+                    classifyRentalDispute(judgment(LANDLORD_SUES_TENANT, { JTITLE: title }))
+                ).toEqual({ isRentalDispute: false, reason: 'excluded-title' });
+            }
+        );
+
+        it('should accept a title about returning the leased property as a rental title', () => {
+            const body = '原告主張：被告承租系爭房屋，租期屆滿後拒不返還。';
+
+            const result = classifyRentalDispute(judgment(body, { JTITLE: '返還租賃物等' }));
+
+            expect(result).toEqual({ isRentalDispute: true, reason: 'rental-title' });
+        });
+
+        it('should still accept a rental title that only names the tenant', () => {
+            const body = '原告主張：被告承租系爭房屋後，自110年6月起即未給付租金。';
+
+            expect(classifyRentalDispute(judgment(body))).toEqual({
+                isRentalDispute: true,
+                reason: 'rental-title',
             });
         });
 
