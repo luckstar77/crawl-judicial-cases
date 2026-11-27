@@ -178,7 +178,7 @@ mkdir -p logs
 主機時區可能是 UTC。先用 `timedatectl` 確認；若 cron 支援 `CRON_TZ`，可加上 `CRON_TZ=Asia/Taipei` 改用臺北時間，否則用 UTC 時間（臺北 01:10 = UTC 前一天 17:10；臺北 20 日 01:40 = UTC 19 日 17:40）。
 
 排程透過 `scripts/cron-job.sh` 執行，它會：
-- 讓所有工作共用一把 `flock` 鎖依序執行：每月工作等每日同步跑完才開始，避免兩個工作同時佔用記憶體。每日同步約 2 小時 40 分；每月匯入一個月約 2 分鐘，記憶體峰值約 240 MB。
+- 讓所有工作共用一把 `flock` 鎖依序執行：每月工作等每日同步跑完才開始，避免兩個工作同時佔用記憶體。每日同步約 2 小時 40 分；每月匯入一個月約 1～2 分鐘，記憶體峰值約 240 MB。
 - 把工作的 `oom_score_adj` 設為 1000：記憶體不足時，核心會優先結束這個工作，而不是同一台主機上的 MySQL。
 - 把輸出附加到 `logs/<日誌名稱>.log`，並記錄開始、結束時間與結束代碼。
 
@@ -189,11 +189,29 @@ PATH=/home/ubuntu/.nvm/versions/node/v22.23.5/bin:/usr/bin:/bin
 TS_NODE_TRANSPILE_ONLY=true
 # 每日臺北 01:10 同步裁判書開放 API（服務時間 00:00–06:00）
 10 17 * * * /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-daily sync:daily
-# 每月臺北 20 日 01:40 先處理刪除清單，再匯入兩個月前的資料
-40 17 19 * * /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-delete-infor sync:delete-infor; /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-monthly sync:monthly -- --month=$(date -d '2 months ago' +\%Y\%m)
+# 每月臺北 20 日 01:40 先處理刪除清單，再重新匯入最近 12 個月（13 到 2 個月前）的資料
+40 17 19 * * /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-delete-infor sync:delete-infor; /path/to/crawl-judicial-cases/scripts/cron-job.sh sync-monthly sync:monthly -- --from=$(date -d '13 months ago' +\%Y\%m) --to=$(date -d '2 months ago' +\%Y\%m)
 ```
 
-月份資料集約在兩個月後的中旬發布（2026-11-26 時最新的是 202609，標題為 20261116Update），所以 20 日匯入兩個月前的資料，例如 11 月 20 日匯入 202609。若當時還沒有發布，摘要會出現 `資源清單中找不到這個月份的 RAR 資料集`，可之後再以 `--month` 補跑。
+月份資料集約在兩個月後的中旬發布（2026-11-26 時最新的是 202609，標題為 20261116Update），所以 20 日匯入的最新月份是兩個月前，例如 11 月 20 日匯入到 202609。若當時還沒有發布，摘要會出現 `資源清單中找不到這個月份的 RAR 資料集`，可之後再以 `--month` 補跑。
+
+每月重新匯入最近 12 個月，而不是只匯入兩個月前那一個月：
+- 每日同步只處理「7 日前那一天」的異動，哪天沒跑（主機停機、API 異常、超過服務時間），那天的異動就不會再出現在 JList。
+- 資料開放平臺每月會重新打包舊月份的 RAR，收進晚公開的判決。重新匯入最近 12 個月，可以把這些判決補回來，不必靠每日同步剛好有跑。
+- 匯入以 JID upsert，重跑同一個月只會覆蓋相同判決，不會重複，也不會刪除留言、按讚所參照的判決。原告、被告、租金、縣市、勝敗等欄位會以當下的抽取規則重新寫入；這些欄位都由程式抽取，沒有人工修正的管道。
+- 比原本多匯入 11 個月，約多花 10～20 分鐘。
+
+### 補齊歷史資料
+
+資料開放平臺的 RAR 從 199601 起，但地方法院（含簡易庭）民事第一審判決從 200001 才有（199601–199912 的候選數為 0）。第一次部署或發現缺漏時，以一次性的工作補齊；透過 `cron-job.sh` 執行，才會和每日同步共用同一把鎖（若 crontab 設了 `CRON_JOB_LOCK_FILE`，手動執行時也要設成一樣）。
+
+補齊整段歷史要 4 個多小時，請在臺北白天開始（例如 09:00 前後），在 01:10 每日同步之前跑完。每日同步會等鎖，拿到鎖時若已過了大半服務時間（00:00–06:00），剩下的異動會被略過，那天的異動就漏掉了。執行方式：
+
+```sh
+nohup ./scripts/cron-job.sh sync-monthly-backfill sync:monthly -- --from=200001 --to=202211 &
+```
+
+2026-11-27 補齊 200001–202211 的 275 個月，約 4 小時 20 分，沒有失敗。一個月約 1 分鐘，越近的月份越大：2022 年每個月約 5～6 萬筆候選、180 筆左右租賃糾紛。每年的租賃糾紛判決從 2001 年約 800 筆，逐年增加到 2022 年約 2,000 筆。這段期間主機（2 GB 記憶體）沒有發生記憶體不足。
 
 ## 環境變數
 
